@@ -444,6 +444,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   .icon-btn:active{background:var(--green-deep);}
   .menu-btn{border:none;background:none;color:var(--ink);font-size:20px;cursor:pointer;padding:4px 6px;flex-shrink:0;}
   .save-indicator{font-size:11px;color:var(--ink-soft);padding:0 14px 8px;}
+  .save-indicator-error{font-size:13px;font-weight:700;color:#fff;background:var(--red);padding:8px 14px;}
 
   .menu-pop{position:absolute;right:10px;top:56px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 6px 18px rgba(20,33,61,.15);z-index:40;min-width:220px;overflow:hidden;}
   .menu-pop button{display:block;width:100%;text-align:left;padding:12px 14px;border:none;background:none;font-size:14px;color:var(--ink);cursor:pointer;border-bottom:1px solid var(--line);}
@@ -611,7 +612,14 @@ function fmtDateTime(ts){
 }
 
 /* ---------- Speicherung: mehrere Datensätze (Entwürfe / Fertig) ---------- */
+/* IndexedDB statt localStorage: localStorage ist auf iOS auf wenige MB begrenzt
+   und reicht bei mehreren hochauflösenden Fotos schnell nicht mehr aus — ein
+   fehlgeschlagenes Speichern blieb dann unbemerkt, bis die Seite neu geladen
+   wurde und den letzten *erfolgreich* gespeicherten (älteren) Stand zeigte.
+   IndexedDB hat ein vielfaches an Speicherplatz und behebt das Problem an der Wurzel. */
 const RECORDS_KEY = "vorortcheck_records_v1";
+const IDB_NAME = "vorortcheck_db";
+const IDB_STORE = "kv";
 let records = [];
 let currentRecordId = null;
 let screen = "home"; // 'home' | 'form' | 'drafts' | 'fertig'
@@ -619,16 +627,53 @@ let storageOK = true;
 let saveTimer = null;
 let lastSavedAt = null;
 
-function loadRecords(){
-  try{ return JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]"); }
-  catch(e){ return []; }
+let idbOpenPromise = null;
+function openDB(){
+  if(idbOpenPromise) return idbOpenPromise;
+  idbOpenPromise = new Promise((resolve, reject)=>{
+    if(!window.indexedDB){ reject(new Error("IndexedDB nicht verfügbar")); return; }
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+  return idbOpenPromise;
 }
-function saveRecords(){
+function idbGet(key){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, "readonly");
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  }));
+}
+function idbSet(key, value){
+  return openDB().then(db => new Promise((resolve, reject)=>{
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  }));
+}
+async function loadRecords(){
   try{
-    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+    const fromIDB = await idbGet(RECORDS_KEY);
+    if(fromIDB) return fromIDB;
+  }catch(e){ console.warn("IndexedDB-Lesefehler", e); }
+  // Einmalige Übernahme von Datensätzen aus einer älteren Version (localStorage).
+  try{
+    const legacy = JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
+    if(legacy.length){ try{ await idbSet(RECORDS_KEY, legacy); }catch(e){} }
+    return legacy;
+  }catch(e){ return []; }
+}
+async function saveRecords(){
+  try{
+    await idbSet(RECORDS_KEY, records);
     lastSavedAt = Date.now();
     storageOK = true;
   }catch(e){
+    console.error("Speichern fehlgeschlagen", e);
     storageOK = false;
   }
   updateSaveIndicator();
@@ -637,19 +682,27 @@ function scheduleAutosave(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveCurrentRecord, 700);
 }
-function saveCurrentRecord(){
+async function saveCurrentRecord(){
   if(!currentRecordId) return;
   const rec = records.find(r=>r.id===currentRecordId);
   if(rec){ rec.updatedAt = Date.now(); }
-  saveRecords();
+  await saveRecords();
 }
+function flushPendingSave(){
+  if(saveTimer){ clearTimeout(saveTimer); saveTimer = null; saveCurrentRecord(); }
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "hidden") flushPendingSave(); });
+window.addEventListener("pagehide", flushPendingSave);
+if(navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
 function updateSaveIndicator(){
   const el = document.getElementById("saveIndicator");
   if(!el) return;
   if(!storageOK){
-    el.textContent = "Speicherung im Vorschaufenster nicht verfügbar — Datei lokal auf dem Handy öffnen, damit nichts verloren geht.";
+    el.textContent = "⚠ Speichern fehlgeschlagen — App geöffnet lassen und nicht schließen, bis das Problem behoben ist!";
+    el.classList.add("save-indicator-error");
     return;
   }
+  el.classList.remove("save-indicator-error");
   el.textContent = lastSavedAt ? `Gespeichert um ${new Date(lastSavedAt).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}` : "";
 }
 
@@ -906,7 +959,8 @@ function handlePhoto(evt, path){
   const reader = new FileReader();
   reader.onload = function(e){
     setPath(S, path, e.target.result);
-    scheduleAutosave();
+    clearTimeout(saveTimer);
+    saveCurrentRecord();
     render();
   };
   reader.readAsDataURL(file);
@@ -1321,7 +1375,8 @@ function saveSketch(){
   });
   const dataUrl = document.getElementById("sketchCanvas").toDataURL("image/png");
   setPath(S, sketchTargetPath, dataUrl);
-  scheduleAutosave();
+  clearTimeout(saveTimer);
+  saveCurrentRecord();
   closeSketchModal();
   render();
 }
@@ -1730,14 +1785,14 @@ async function finishRecord(){
   await downloadPDFOrFallback(S);
   const rec = records.find(r=>r.id===currentRecordId);
   if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); }
-  saveRecords();
+  await saveRecords();
   screen = "fertig"; S = null; currentRecordId = null;
   render();
 }
 
 /* ---------- Boot ---------- */
-(function boot(){
-  records = loadRecords();
+(async function boot(){
+  records = await loadRecords();
   screen = "home";
   render();
 })();

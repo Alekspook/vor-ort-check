@@ -1496,6 +1496,7 @@ async function buildPDF(d){
     if(!orientCache.has(url)) orientCache.set(url, normalizeImageOrientation(url));
     return orientCache.get(url);
   }
+  const pendingPhotoLinks = [];
   let y = 16;
 
   function col(c){ doc.setTextColor(c[0],c[1],c[2]); }
@@ -1560,7 +1561,7 @@ async function buildPDF(d){
         const x = marginX + idx*(colW+gap);
         try{
           doc.addImage(p.oriented, "JPEG", x, y, p.w, p.h);
-          doc.link(x, y, p.w, p.h, {url: p.url});
+          pendingPhotoLinks.push({ page: doc.internal.getCurrentPageInfo().pageNumber, x, y, w:p.w, h:p.h, label:p.label, oriented:p.oriented });
         }catch(e){
           fillCol(PDF_PAPER); doc.rect(x, y, colW, maxH, "F");
           doc.setFontSize(8); col([184,68,60]);
@@ -1703,6 +1704,34 @@ async function buildPDF(d){
     sectionHeader("ZUSÄTZLICHE BILDER", PDF_GREEN);
     await photoGrid(extra);
   }
+
+  /* Foto-Detailseiten: jedes Vorschaubild bekommt eine eigene Seite in groß,
+     damit man im PDF antippen statt heranzoomen kann (externe Links auf die
+     Originaldatei werden von vielen PDF-Betrachtern — u.a. auf dem iPhone —
+     nicht geöffnet; ein interner Sprung zu einer Seite funktioniert überall). */
+  pendingPhotoLinks.forEach(item=>{
+    startNewPage();
+    doc.setFontSize(11); doc.setFont(undefined,"bold"); col(PDF_INK);
+    doc.text(item.label, marginX, y+2);
+    y += 8;
+    let w = contentW, h = contentW*0.75;
+    try{
+      const props = doc.getImageProperties(item.oriented);
+      h = contentW*(props.height/props.width);
+      const maxH = pageH - y - bottomMargin - 10;
+      if(h>maxH){ h=maxH; w=maxH*(props.width/props.height); }
+    }catch(e){}
+    const x = marginX + (contentW-w)/2;
+    try{ doc.addImage(item.oriented, "JPEG", x, y, w, h); }catch(e){}
+    drawCol(PDF_LINE); doc.setLineWidth(0.2); doc.rect(x, y, w, h);
+    doc.setFontSize(9.5); doc.setFont(undefined,"bold"); col(PDF_GREEN);
+    doc.textWithLink("< Zurück zur Übersicht", marginX, pageH-bottomMargin-2, {pageNumber: item.page});
+    item.targetPage = doc.internal.getNumberOfPages();
+  });
+  pendingPhotoLinks.forEach(item=>{
+    doc.setPage(item.page);
+    doc.link(item.x, item.y, item.w, item.h, {pageNumber: item.targetPage});
+  });
 
   /* Fußzeile auf allen Seiten */
   const totalPages = doc.internal.getNumberOfPages();

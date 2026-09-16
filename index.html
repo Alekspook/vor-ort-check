@@ -1818,7 +1818,17 @@ async function buildPDF(d){
   return doc;
 }
 function safeAlert(msg){ try{ alert(msg); }catch(e){ console.warn(msg); } }
-function triggerDownload(blob, filename){
+async function triggerDownload(blob, filename){
+  try{
+    const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file] });
+      return;
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return;
+    console.warn("Teilen nicht möglich, falle zurück auf Download", e);
+  }
   const url = URL.createObjectURL(blob);
   try{
     const a = document.createElement("a");
@@ -1848,22 +1858,22 @@ function showDownloadFallback(url, filename){
   bar.appendChild(span); bar.appendChild(link); bar.appendChild(close);
   document.body.appendChild(bar);
 }
-function downloadTextFallback(d){
+async function downloadTextFallback(d){
   const blob = new Blob([buildTextSummary(d)], {type:"text/plain"});
-  triggerDownload(blob, pdfFilename(d).replace(".pdf",".txt"));
+  await triggerDownload(blob, pdfFilename(d).replace(".pdf",".txt"));
 }
 async function buildPDFSafe(d){
   try{
     if(!window.jspdf){
       safeAlert("PDF-Bibliothek konnte nicht geladen werden (keine Internetverbindung?). Es wird stattdessen eine Textdatei heruntergeladen.");
-      downloadTextFallback(d);
+      await downloadTextFallback(d);
       return null;
     }
     return await buildPDF(d);
   }catch(e){
     console.error(e);
     safeAlert("PDF konnte nicht erstellt werden. Es wird stattdessen eine Textdatei heruntergeladen.");
-    downloadTextFallback(d);
+    await downloadTextFallback(d);
     return null;
   }
 }
@@ -1871,10 +1881,10 @@ async function downloadPDFOrFallback(d){
   const doc = await buildPDFSafe(d);
   if(!doc) return;
   try{
-    triggerDownload(doc.output("blob"), pdfFilename(d));
+    await triggerDownload(doc.output("blob"), pdfFilename(d));
   }catch(e){
     console.error(e);
-    downloadTextFallback(d);
+    await downloadTextFallback(d);
   }
 }
 function sendMail(){

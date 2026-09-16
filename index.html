@@ -462,6 +462,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   main{padding:16px 14px calc(70px + env(safe-area-inset-bottom));}
   .section-label{font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin:22px 2px 8px;}
   .section-label:first-child{margin-top:0;}
+  .section-label.center{text-align:center;font-size:13.5px;}
 
   .card{
     background:var(--card);
@@ -472,7 +473,15 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     margin-bottom:14px;
   }
   .card h3{font-size:14px;margin:0 0 14px;font-weight:700;color:var(--ink);}
+  .card h3.center{text-align:center;}
   .card h3 .hint{font-weight:400;color:var(--ink-soft);font-size:12px;display:block;margin-top:2px;}
+  .address-suggestions{margin-top:6px;}
+  .address-suggestion{display:block;width:100%;text-align:left;padding:10px 12px;border:1px solid var(--line);border-top:none;background:#fff;font-size:13px;color:var(--ink);cursor:pointer;}
+  .address-suggestion:first-child{border-top:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;}
+  .address-suggestion:last-child{border-radius:0 0 var(--radius) var(--radius);}
+  .address-suggestion:active{background:var(--paper);}
+  .verbrauch-total{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;font-size:15px;font-weight:700;color:var(--ink);display:flex;justify-content:space-between;align-items:center;}
+  .verbrauch-total span:last-child{color:var(--green);}
 
   .field{margin-bottom:16px;outline-offset:4px;border-radius:4px;}
   .field:last-child{margin-bottom:0;}
@@ -568,9 +577,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
 /* ---------- State ---------- */
 function emptyRoof(){
   return {
-    dachart:"", fotos:[null,null,null,null],
+    dachart:"", fotos:[null,null,null,null,null],
     regenrinne:"", regenrinneMaterial:"", drohnenFotos:[null,null,null], bemerkung1:"",
-    dachaufbau:"", dcLeitungsweg:"", dcFotos:[null,null,null],
+    dachaufbau:"", dcLeitungsweg:"", dcFotos:[null,null],
     wanddurchbrueche:"", wanddurchbruecheFotos:[null,null,null],
     traufe8:"", geruest:"", geruestBemerkung:""
   };
@@ -584,7 +593,7 @@ function freshState(){
     gebaeude:{ kategorie:"", besonderheiten:"" },
     daecher:[ emptyRoof() ],
     elektro:{
-      stromverbrauch:"", grossverbraucher:{ waermepumpe:false, eauto:false, sauna:false, pool:false },
+      stromverbrauch:"", grossverbraucher:{ waermepumpe:"", eauto:"", sauna:"", pool:"" },
       zaehler:{ uebersicht:null, ohneAbdeckungen:null, typenschild:null, vorsicherung:null, anschlussbereich:null, verteilerfeld1:null, verteilerfeld2:null,
         neuerZaehlerschrank:"", weitereUV:"", weitereUVFoto:null, neueUV:"", neueUVFoto:null, wanddurchbrueche:"", wanddurchbruecheFoto1:null, wanddurchbruecheFoto2:null },
       hausanschluss:{ typ:"", potenzialausgleich:"", potenzialausgleichFoto:null, fundamenterder:"", fundamenterderFoto:null, foto:null, bemerkung:"" },
@@ -924,6 +933,24 @@ function checkField(label, path){
       <span>${label}</span>
     </div>`;
 }
+function kwhField(label, path){
+  const val = getPath(S, path) ?? "";
+  return `
+    <div class="field" id="${domId(path)}">
+      <label class="field-label">${label}</label>
+      <input type="number" value="${escapeAttr(val)}" placeholder="0"
+        oninput="setPath(S,'${path}', this.value); scheduleAutosave(); updateVerbrauchTotal();">
+    </div>`;
+}
+function verbrauchTotal(){
+  const g = S.elektro.grossverbraucher;
+  return [S.elektro.stromverbrauch, g.waermepumpe, g.eauto, g.sauna, g.pool]
+    .map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
+}
+function updateVerbrauchTotal(){
+  const el = document.getElementById("verbrauchTotalValue");
+  if(el) el.textContent = verbrauchTotal().toLocaleString("de-DE") + " kWh/Jahr";
+}
 function photoSlot(path, label, required){
   const val = getPath(S, path);
   if(val){
@@ -976,17 +1003,19 @@ function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt
 function renderAllSections(){
   return `
     <div style="--group-color:${GROUP_COLOR.base}">
-      <div class="section-label">Basisdaten</div>
+      <div class="section-label center">Kontaktdaten</div>
       <div class="card">
-        <h3>Grunddaten</h3>
+        <h3>Fachberater</h3>
         <div class="field" id="${domId('grunddaten.besichtigtVon')}">
           <label class="field-label">Besichtigt von <span class="req">*</span></label>
           <input type="text" value="Alexander Bajric" disabled style="background:#F4F6F8;color:var(--ink-soft);">
         </div>
+        <div class="field"><label class="field-label">Meine Mail</label><div class="note" style="margin:0;">Alexander.bajric@dwb-energie.de</div></div>
+        <div class="field"><label class="field-label">Mein Mobil</label><div class="note" style="margin:0;">+491795230595</div></div>
         ${textField("Besichtigt am", "grunddaten.besichtigtAm", {type:"date"})}
       </div>
       <div class="card">
-        <h3>Kunde</h3>
+        <h3>Interessent/in</h3>
         ${radioField("Anrede", "kunde.anrede", ["Familie","Herr","Frau"])}
         ${textField("Vorname", "kunde.vorname", {placeholder:"Max"})}
         ${textField("Nachname", "kunde.nachname", {placeholder:"Mustermann", required:true})}
@@ -995,7 +1024,11 @@ function renderAllSections(){
       </div>
       <div class="card">
         <h3>Standort</h3>
-        <button type="button" class="action-btn" onclick="useGPS()">&#128205; GPS-Standort verwenden</button>
+        <div class="field">
+          <label class="field-label">Adresse suchen</label>
+          <input type="text" id="addressSearchInput" placeholder="z.B. Musterstraße 1, 12345 Musterstadt" autocomplete="off" oninput="onAddressSearchInput(this.value)">
+          <div class="address-suggestions" id="addressSuggestions"></div>
+        </div>
         ${textField("Straße", "standort.strasse", {required:true})}
         ${textField("Nr.", "standort.nr", {required:true})}
         ${textField("PLZ", "standort.plz", {required:true})}
@@ -1004,28 +1037,25 @@ function renderAllSections(){
     </div>
 
     <div style="--group-color:${GROUP_COLOR.gebaeude}">
-      <div class="section-label">Gebäude &amp; Dach</div>
+      <div class="section-label center">DC</div>
       <div class="card">
-        <h3>Informationen zum Gebäude</h3>
-        ${radioField("Kategorie des Gebäudes", "gebaeude.kategorie", ["Einfamilienhaus","Reihenhaus","Sonstige"], {required:true})}
+        ${radioField("Kategorie", "gebaeude.kategorie", ["Einfamilienhaus","Reihenhaus","Sonstige"], {required:true})}
         ${textField("Besonderheiten des Gebäudes", "gebaeude.besonderheiten")}
       </div>
       ${renderRoofs()}
     </div>
 
     <div style="--group-color:${GROUP_COLOR.elektro}">
-      <div class="section-label">Elektroanlage</div>
+      <div class="section-label center">Verbrauch</div>
       <div class="card">
-        <h3>Stromverbrauch</h3>
-        ${textField("jährl. Stromverbrauch (in kWh)", "elektro.stromverbrauch", {type:"number"})}
-        <div class="field">
-          <label class="field-label">Aktuelle Großverbraucher</label>
-          ${checkField("Wärmepumpe", "elektro.grossverbraucher.waermepumpe")}
-          ${checkField("E-Auto", "elektro.grossverbraucher.eauto")}
-          ${checkField("Sauna", "elektro.grossverbraucher.sauna")}
-          ${checkField("Pool", "elektro.grossverbraucher.pool")}
-        </div>
+        ${kwhField("Hausstromverbrauch (kWh/Jahr)", "elektro.stromverbrauch")}
+        ${kwhField("Wärmepumpe (kWh/Jahr)", "elektro.grossverbraucher.waermepumpe")}
+        ${kwhField("E-Auto (kWh/Jahr)", "elektro.grossverbraucher.eauto")}
+        ${kwhField("Sauna (kWh/Jahr)", "elektro.grossverbraucher.sauna")}
+        ${kwhField("Pool (kWh/Jahr)", "elektro.grossverbraucher.pool")}
+        <div class="verbrauch-total"><span>Gesamtverbrauch</span><span id="verbrauchTotalValue">${verbrauchTotal().toLocaleString("de-DE")} kWh/Jahr</span></div>
       </div>
+      <div class="section-label center">AC</div>
       <div class="card">
         <h3>Zählerschrank</h3>
         ${radioField("Neuer Zählerschrank", "elektro.zaehler.neuerZaehlerschrank", ["Erforderlich","nicht erforderlich","muss geprüft werden"])}
@@ -1050,7 +1080,6 @@ function renderAllSections(){
           </div>` : ""}
       </div>
       <div class="card">
-        <h3>Hausanschluss und Erdung</h3>
         ${radioField("Hausanschluss", "elektro.hausanschluss.typ", ["HA-Innen","HA-Außen","kein eigener HA vorhanden"], {required:true})}
         ${photoSlot("elektro.hausanschluss.foto","Hausanschluss (Übersichtsfoto)", false)}
         ${radioField("Potenzialausgleichsschiene", "elektro.hausanschluss.potenzialausgleich", ["vorhanden","nicht vorhanden"])}
@@ -1079,26 +1108,26 @@ function renderAllSections(){
           <div class="conditional">${photoSlot("elektro.fotoWallboxDurchbruch","Foto Kabelweg / Durchbruch", false)}</div>` : ""}
       </div>
       <div class="card">
-        <h3>Gewünschte Komponenten</h3>
-        ${checkField("Hybrid-Wechselrichter", "elektro.komponenten.hybrid")}
+        <h3>Hardware</h3>
+        ${checkField("Wechselrichter", "elektro.komponenten.hybrid")}
         ${checkField("Batteriespeicher", "elektro.komponenten.batterie")}
-        ${checkField("Not- / Ersatzstrom", "elektro.komponenten.notstrom")}
+        ${checkField("Notstrom", "elektro.komponenten.notstrom")}
         ${S.elektro.komponenten.hybrid ? `
           <div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter (Foto)", false)}</div>` : ""}
         ${S.elektro.komponenten.batterie ? `
           <div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (Foto)", false)}</div>` : ""}
-        ${textareaField("Montageort(e) der neuen Komponente(n) — Bemerkungen", "elektro.montageortBemerkung")}
+        ${textareaField("Bemerkung", "elektro.montageortBemerkung")}
       </div>
       <div class="card">
         <h3>Messkonzept</h3>
-        ${radioField("gewünschtes Zähler-Messkonzept", "elektro.messkonzept", ["keine Änderung (PV-Anlage auf Hausstrom)","Zusammenlegung","Kaskade"], {required:true})}
+        ${radioField("Zähler-Messkonzept", "elektro.messkonzept", ["keine Änderung","Zusammenlegung","Kaskade"], {required:true})}
       </div>
     </div>
 
     <div style="--group-color:${GROUP_COLOR.base}">
       <div class="section-label">Abschluss</div>
       <div class="card">
-        <h3>Zusätzliche Bilder</h3>
+        <h3>Weitere Fotos</h3>
         ${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Zusätzliches Bild ${i+1}`, false)).join("")}
         <button class="add-btn" onclick="addExtraPhoto()">+ Bild hinzufügen</button>
       </div>
@@ -1120,36 +1149,31 @@ function renderRoofs(){
   const cards = S.daecher.map((d,i)=>`
     <div class="card roof-card">
       <div class="roof-head">
-        <h3>Dach ${i+1}</h3>
+        <h3 class="center" style="flex:1;">Dach ${i+1}</h3>
         ${S.daecher.length>1?`<button class="remove-roof" onclick="removeRoof(${i})">Entfernen</button>`:""}
       </div>
-      ${radioField("Dachart", `daecher.${i}.dachart`, ["Schrägdach","Flachdach","Blechdach","Carport","Sonstige"], {required:true})}
-
-      <div class="subgroup">Gesamte Dachfläche<span class="small">Alle Störobjekte dokumentieren</span></div>
-      ${photoSlot(`daecher.${i}.fotos.0`, "Dachfläche Bild 1", true)}
-      ${photoSlot(`daecher.${i}.fotos.1`, "Dachfläche Bild 2", false)}
-      ${photoSlot(`daecher.${i}.fotos.2`, "Dachfläche Bild 3", false)}
-      ${photoSlot(`daecher.${i}.fotos.3`, "Dachfläche Bild 4", false)}
+      ${radioField("Art", `daecher.${i}.dachart`, ["Schrägdach","Flachdach","Blechdach","Carport","Sonstige"], {required:true})}
+      ${radioField("Eindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Blechfalz","Sonstige"])}
       ${radioField("Regenrinne", `daecher.${i}.regenrinne`, ["vorhanden","nicht vorhanden"])}
       ${d.regenrinne === "vorhanden" ? `
         <div class="conditional">${radioField("Material Regenrinne", `daecher.${i}.regenrinneMaterial`, ["Zink","Kupfer","Kunststoff"])}</div>` : ""}
       ${textareaField("Bemerkungen", `daecher.${i}.bemerkung1`)}
 
-      <div class="subgroup">Drohnenaufnahmen</div>
-      ${photoSlot(`daecher.${i}.drohnenFotos.0`, "Drohnenfoto Bild 1", false)}
-      ${photoSlot(`daecher.${i}.drohnenFotos.1`, "Drohnenfoto Bild 2", false)}
-      ${photoSlot(`daecher.${i}.drohnenFotos.2`, "Drohnenfoto Bild 3", false)}
+      <div class="subgroup">Dachfotos</div>
+      ${photoSlot(`daecher.${i}.fotos.0`, "Dachfoto 1", true)}
+      ${photoSlot(`daecher.${i}.fotos.1`, "Dachfoto 2", false)}
+      ${photoSlot(`daecher.${i}.fotos.2`, "Dachfoto 3", false)}
+      ${photoSlot(`daecher.${i}.fotos.3`, "Dachfoto 4", false)}
+      ${photoSlot(`daecher.${i}.fotos.4`, "Dachfoto 5", false)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.0`, "Dachfoto 6", false)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.1`, "Dachfoto 7", false)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.2`, "Dachfoto 8", false)}
 
-      <div class="subgroup">Dacheindeckung</div>
-      ${radioField("Dacheindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Sonstige"])}
-
-      <div class="subgroup">Kabelwege / Durchbrüche<span class="small">vom Dach bis Aufstellort</span></div>
-      ${radioField("DC Leitungsweg", `daecher.${i}.dcLeitungsweg`, ["vorh. Leerrohr","alter Kaminschacht","Fassade im Alurohr","Sonstige"])}
+      ${radioField("Kabelweg", `daecher.${i}.dcLeitungsweg`, ["vorh. Leerrohr","alter Kaminschacht","Fassade im Alurohr","Sonstige"])}
       ${d.dcLeitungsweg ? `
         <div class="conditional">
-          ${photoSlot(`daecher.${i}.dcFotos.0`, "DC Leitungsweg Bild 1", true)}
-          ${photoSlot(`daecher.${i}.dcFotos.1`, "DC Leitungsweg Bild 2", false)}
-          ${photoSlot(`daecher.${i}.dcFotos.2`, "DC Leitungsweg Bild 3", false)}
+          ${photoSlot(`daecher.${i}.dcFotos.0`, "Kabelweg Bild 1", true)}
+          ${photoSlot(`daecher.${i}.dcFotos.1`, "Kabelweg Bild 2", false)}
         </div>` : ""}
       ${radioField("Wanddurchbrüche notwendig", `daecher.${i}.wanddurchbrueche`, ["Ja","Nein"])}
       ${d.wanddurchbrueche === "Ja" ? `
@@ -1159,9 +1183,8 @@ function renderRoofs(){
           ${photoSlot(`daecher.${i}.wanddurchbruecheFotos.2`, "Foto Wanddurchbruch 3", false)}
         </div>` : ""}
 
-      <div class="subgroup">Gerüst</div>
-      ${radioField("Höhe Traufe über 8 Meter?", `daecher.${i}.traufe8`, ["Ja","Nein"])}
-      ${radioField("Gerüst erforderlich", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","Kunde stellt Gerüst"])}
+      ${radioField("Traufhöhe", `daecher.${i}.traufe8`, ["über 8 Meter","unter 8 Meter"])}
+      ${radioField("Gerüst erforderlich", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","muss geprüft werden","Kunde stellt Gerüst"])}
       ${textareaField("Bemerkungen", `daecher.${i}.geruestBemerkung`)}
     </div>
   `).join("");
@@ -1382,13 +1405,42 @@ function saveSketch(){
   render();
 }
 
-/* ---------- GPS ---------- */
-function useGPS(){
-  if(!navigator.geolocation){ safeAlert("GPS wird von diesem Gerät nicht unterstützt."); return; }
-  navigator.geolocation.getCurrentPosition(
-    pos=>{ setPath(S,"standort.gps", { lat: pos.coords.latitude, lng: pos.coords.longitude }); scheduleAutosave(); safeAlert("Standort erfasst: "+pos.coords.latitude.toFixed(5)+", "+pos.coords.longitude.toFixed(5)); },
-    ()=>{ safeAlert("Standort konnte nicht ermittelt werden."); }
-  );
+/* ---------- Adress-Autocomplete ---------- */
+const LOCATIONIQ_API_KEY = "pk.315f1cf0f19d1e1b559e5e40c1eda4d5";
+let addressSearchTimer = null;
+let addressSearchResults = [];
+function onAddressSearchInput(q){
+  clearTimeout(addressSearchTimer);
+  const box = document.getElementById("addressSuggestions");
+  if(!q || q.trim().length < 3){ if(box) box.innerHTML = ""; return; }
+  addressSearchTimer = setTimeout(()=>runAddressSearch(q), 400);
+}
+async function runAddressSearch(q){
+  const box = document.getElementById("addressSuggestions");
+  try{
+    const url = `https://api.locationiq.com/v1/autocomplete?key=${LOCATIONIQ_API_KEY}&q=${encodeURIComponent(q)}&countrycodes=de&limit=5&format=json&normalizeaddress=1`;
+    const res = await fetch(url);
+    if(!res.ok){ if(box) box.innerHTML = ""; return; }
+    addressSearchResults = await res.json();
+    if(!Array.isArray(addressSearchResults)) addressSearchResults = [];
+  }catch(e){
+    console.warn("Adresssuche fehlgeschlagen", e);
+    addressSearchResults = [];
+  }
+  if(!box) return;
+  box.innerHTML = addressSearchResults.map((r,i)=>`<button type="button" class="address-suggestion" onclick="pickAddressSuggestion(${i})">${escapeHtml(r.display_name)}</button>`).join("");
+}
+function pickAddressSuggestion(i){
+  const r = addressSearchResults[i];
+  if(!r || !r.address) return;
+  const a = r.address;
+  S.standort.strasse = a.road || a.pedestrian || a.neighbourhood || S.standort.strasse;
+  S.standort.nr = a.house_number || S.standort.nr;
+  S.standort.plz = a.postcode || S.standort.plz;
+  S.standort.ort = a.city || a.town || a.village || a.municipality || S.standort.ort;
+  addressSearchResults = [];
+  scheduleAutosave();
+  render();
 }
 
 /* ---------- Validation & Send ---------- */
@@ -1401,19 +1453,19 @@ function defaultNachricht(){
 function requiredChecks(){
   const list = [
     [!!S.kunde.nachname, "Nachname", "kunde.nachname"],
-    [!!S.kunde.email, "E-Mail-Adresse Kunde", "kunde.email"],
+    [!!S.kunde.email, "E-Mail-Adresse Interessent/in", "kunde.email"],
     [!!S.standort.strasse, "Straße", "standort.strasse"],
     [!!S.standort.nr, "Hausnummer", "standort.nr"],
     [!!S.standort.plz, "PLZ", "standort.plz"],
     [!!S.standort.ort, "Ort", "standort.ort"],
-    [!!S.gebaeude.kategorie, "Kategorie des Gebäudes", "gebaeude.kategorie"],
+    [!!S.gebaeude.kategorie, "Kategorie", "gebaeude.kategorie"],
     [!!S.elektro.zaehler.uebersicht, "Zählerschrank Übersicht (Foto)", "elektro.zaehler.uebersicht"],
     [!!S.elektro.hausanschluss.typ, "Hausanschluss", "elektro.hausanschluss.typ"],
     [!!S.elektro.messkonzept, "Zähler-Messkonzept", "elektro.messkonzept"],
   ];
   S.daecher.forEach((d,i)=>{
-    list.push([!!d.dachart, `Dach ${i+1}: Dachart`, `daecher.${i}.dachart`]);
-    list.push([!!d.fotos[0], `Dach ${i+1}: Dachfläche Bild 1`, `daecher.${i}.fotos.0`]);
+    list.push([!!d.dachart, `Dach ${i+1}: Art`, `daecher.${i}.dachart`]);
+    list.push([!!d.fotos[0], `Dach ${i+1}: Dachfoto 1`, `daecher.${i}.fotos.0`]);
   });
   return list;
 }
@@ -1441,14 +1493,16 @@ function buildTextSummary(d){
   d = d || S;
   let t = `PROTOKOLL VOR-ORT-BESICHTIGUNG\n`;
   t += `Besichtigt von: ${d.grunddaten.besichtigtVon}  |  am: ${formatDateDE(d.grunddaten.besichtigtAm)}\n\n`;
-  t += `KUNDE\n${[d.kunde.anrede,d.kunde.vorname,d.kunde.nachname].filter(Boolean).join(" ")}\nTel: ${d.kunde.telefon}\nE-Mail: ${d.kunde.email}\n\n`;
+  t += `INTERESSENT/IN\n${[d.kunde.anrede,d.kunde.vorname,d.kunde.nachname].filter(Boolean).join(" ")}\nTel: ${d.kunde.telefon}\nE-Mail: ${d.kunde.email}\n\n`;
   t += `STANDORT\n${[d.standort.strasse,d.standort.nr].filter(Boolean).join(" ")}, ${d.standort.plz} ${d.standort.ort}\n\n`;
-  t += `GEBÄUDE\nKategorie: ${d.gebaeude.kategorie}\nBesonderheiten: ${d.gebaeude.besonderheiten||"-"}\n\n`;
+  t += `DC\nKategorie: ${d.gebaeude.kategorie}\nBesonderheiten: ${d.gebaeude.besonderheiten||"-"}\n\n`;
   d.daecher.forEach((r,i)=>{
-    t += `DACH ${i+1}\nDachart: ${r.dachart||"-"}\nDacheindeckung: ${r.dachaufbau||"-"}\nDC-Leitungsweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nGerüst erforderlich: ${r.geruest||"-"}\n\n`;
+    t += `DACH ${i+1}\nArt: ${r.dachart||"-"}\nEindeckung: ${r.dachaufbau||"-"}\nKabelweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nGerüst erforderlich: ${r.geruest||"-"}\n\n`;
   });
-  const gv = Object.entries(d.elektro.grossverbraucher||{}).filter(([k,v])=>v).map(([k])=>k).join(", ");
-  t += `ELEKTROANLAGE\nJährl. Verbrauch: ${d.elektro.stromverbrauch||"-"} kWh\nGroßverbraucher: ${gv||"-"}\nHausanschluss: ${d.elektro.hausanschluss.typ||"-"}\nPotenzialausgleichsschiene: ${d.elektro.hausanschluss.potenzialausgleich||"-"} | Fundamenterder: ${d.elektro.hausanschluss.fundamenterder||"-"}\nWärmepumpe: ${d.elektro.waermepumpe||"-"} | Wallbox: ${d.elektro.wallbox||"-"}\nGewünschte Komponenten: ${Object.entries(d.elektro.komponenten).filter(([k,v])=>v).map(([k])=>k).join(", ")||"-"}\nMesskonzept: ${d.elektro.messkonzept||"-"}\n`;
+  const g = d.elektro.grossverbraucher||{};
+  const gesamtverbrauch = [d.elektro.stromverbrauch, g.waermepumpe, g.eauto, g.sauna, g.pool].map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
+  t += `VERBRAUCH\nHausstromverbrauch: ${d.elektro.stromverbrauch||"-"} kWh/Jahr\nWärmepumpe: ${g.waermepumpe||"-"} kWh/Jahr | E-Auto: ${g.eauto||"-"} kWh/Jahr | Sauna: ${g.sauna||"-"} kWh/Jahr | Pool: ${g.pool||"-"} kWh/Jahr\nGesamtverbrauch: ${gesamtverbrauch||"-"} kWh/Jahr\n\n`;
+  t += `AC\nHausanschluss: ${d.elektro.hausanschluss.typ||"-"}\nPotenzialausgleichsschiene: ${d.elektro.hausanschluss.potenzialausgleich||"-"} | Fundamenterder: ${d.elektro.hausanschluss.fundamenterder||"-"}\nWärmepumpe: ${d.elektro.waermepumpe||"-"} | Wallbox: ${d.elektro.wallbox||"-"}\nHardware: ${Object.entries(d.elektro.komponenten).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ")||"-"}\nMesskonzept: ${d.elektro.messkonzept||"-"}\n`;
   return t;
 }
 function formatDateDE(iso){
@@ -1516,8 +1570,7 @@ async function uploadPhotoForLink(dataUrl){
 }
 
 const PDF_INK = [20,33,61], PDF_INK_SOFT = [95,106,130], PDF_GREEN = [47,111,78], PDF_AMBER = [184,123,28], PDF_LINE = [217,222,229], PDF_PAPER = [244,246,248];
-const GV_LABELS = { waermepumpe:"Wärmepumpe", eauto:"E-Auto", sauna:"Sauna", pool:"Pool" };
-const KOMP_LABELS = { hybrid:"Hybrid-Wechselrichter", batterie:"Batteriespeicher", notstrom:"Not-/Ersatzstrom" };
+const KOMP_LABELS = { hybrid:"Wechselrichter", batterie:"Batteriespeicher", notstrom:"Notstrom" };
 
 async function buildPDF(d){
   const { jsPDF } = window.jspdf;
@@ -1633,13 +1686,13 @@ async function buildPDF(d){
   doc.text("Besichtigt von " + (d.grunddaten.besichtigtVon||""), pageW-marginX, 21, {align:"right"});
   y = 40;
 
-  /* Info-Box Kunde / Standort */
+  /* Info-Box Interessent/in / Standort */
   const boxH = 27;
   checkSpace(boxH+6);
   fillCol(PDF_PAPER); doc.roundedRect(marginX, y, contentW, boxH, 2, 2, "F");
   const halfW = contentW/2;
   doc.setFontSize(8); doc.setFont(undefined,"bold"); col(PDF_INK_SOFT);
-  doc.text("KUNDE", marginX+6, y+7);
+  doc.text("INTERESSENT/IN", marginX+6, y+7);
   doc.text("STANDORT", marginX+halfW+6, y+7);
   doc.setFontSize(9.5); doc.setFont(undefined,"normal"); col(PDF_INK);
   doc.text([d.kunde.anrede,custName].filter(Boolean).join(" ") || "–", marginX+6, y+13);
@@ -1650,8 +1703,8 @@ async function buildPDF(d){
   y += boxH + 9;
   col(PDF_INK);
 
-  /* Gebäude */
-  sectionHeader("GEBÄUDE", PDF_GREEN);
+  /* DC */
+  sectionHeader("DC", PDF_GREEN);
   kv("Kategorie", d.gebaeude.kategorie);
   kv("Besonderheiten", d.gebaeude.besonderheiten);
   y += 3;
@@ -1660,28 +1713,38 @@ async function buildPDF(d){
   for(let i=0;i<d.daecher.length;i++){
     const r = d.daecher[i];
     await sectionPhotos(PDF_GREEN, `DACH ${i+1}`, [
-      ["Dachart", r.dachart],
+      ["Art", r.dachart],
+      ["Eindeckung", r.dachaufbau],
       ["Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – ")],
-      ["Dacheindeckung", r.dachaufbau],
-      ["DC-Leitungsweg", r.dcLeitungsweg],
-      ["Wanddurchbrüche", r.wanddurchbrueche],
-      ["Gerüst", r.geruest],
       ["Bemerkungen", r.bemerkung1],
+      ["Kabelweg", r.dcLeitungsweg],
+      ["Wanddurchbrüche", r.wanddurchbrueche],
+      ["Traufhöhe", r.traufe8],
+      ["Gerüst erforderlich", r.geruest],
       ["Bemerkungen Gerüst", r.geruestBemerkung]
     ], [
-      {label:"Dachfläche 1", url:r.fotos[0]}, {label:"Dachfläche 2", url:r.fotos[1]},
-      {label:"Dachfläche 3", url:r.fotos[2]}, {label:"Dachfläche 4", url:r.fotos[3]},
-      {label:"Drohnenfoto 1", url:r.drohnenFotos[0]}, {label:"Drohnenfoto 2", url:r.drohnenFotos[1]}, {label:"Drohnenfoto 3", url:r.drohnenFotos[2]},
-      {label:"DC-Leitungsweg 1", url:r.dcFotos[0]}, {label:"DC-Leitungsweg 2", url:r.dcFotos[1]}, {label:"DC-Leitungsweg 3", url:r.dcFotos[2]},
+      {label:"Dachfoto 1", url:r.fotos[0]}, {label:"Dachfoto 2", url:r.fotos[1]},
+      {label:"Dachfoto 3", url:r.fotos[2]}, {label:"Dachfoto 4", url:r.fotos[3]}, {label:"Dachfoto 5", url:r.fotos[4]},
+      {label:"Dachfoto 6", url:r.drohnenFotos[0]}, {label:"Dachfoto 7", url:r.drohnenFotos[1]}, {label:"Dachfoto 8", url:r.drohnenFotos[2]},
+      {label:"Kabelweg 1", url:r.dcFotos[0]}, {label:"Kabelweg 2", url:r.dcFotos[1]},
       {label:"Wanddurchbruch 1", url:r.wanddurchbruecheFotos[0]}, {label:"Wanddurchbruch 2", url:r.wanddurchbruecheFotos[1]}, {label:"Wanddurchbruch 3", url:r.wanddurchbruecheFotos[2]}
     ]);
   }
 
-  /* Zählerschrank */
-  const gv = Object.entries(d.elektro.grossverbraucher||{}).filter(([k,v])=>v).map(([k])=>GV_LABELS[k]||k).join(", ");
-  await sectionPhotos(PDF_AMBER, "ELEKTROANLAGE – ZÄHLERSCHRANK", [
-    ["Jährl. Verbrauch", d.elektro.stromverbrauch ? d.elektro.stromverbrauch+" kWh" : ""],
-    ["Großverbraucher", gv],
+  /* Verbrauch */
+  sectionHeader("VERBRAUCH", PDF_AMBER);
+  kv("Hausstromverbrauch", d.elektro.stromverbrauch ? d.elektro.stromverbrauch+" kWh/Jahr" : "");
+  kv("Wärmepumpe", d.elektro.grossverbraucher.waermepumpe ? d.elektro.grossverbraucher.waermepumpe+" kWh/Jahr" : "");
+  kv("E-Auto", d.elektro.grossverbraucher.eauto ? d.elektro.grossverbraucher.eauto+" kWh/Jahr" : "");
+  kv("Sauna", d.elektro.grossverbraucher.sauna ? d.elektro.grossverbraucher.sauna+" kWh/Jahr" : "");
+  kv("Pool", d.elektro.grossverbraucher.pool ? d.elektro.grossverbraucher.pool+" kWh/Jahr" : "");
+  const gesamtverbrauch = [d.elektro.stromverbrauch, d.elektro.grossverbraucher.waermepumpe, d.elektro.grossverbraucher.eauto, d.elektro.grossverbraucher.sauna, d.elektro.grossverbraucher.pool]
+    .map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
+  kv("Gesamtverbrauch", gesamtverbrauch ? gesamtverbrauch.toLocaleString("de-DE")+" kWh/Jahr" : "");
+  y += 3;
+
+  /* AC – Zählerschrank */
+  await sectionPhotos(PDF_AMBER, "AC – ZÄHLERSCHRANK", [
     ["Neuer Zählerschrank", d.elektro.zaehler.neuerZaehlerschrank],
     ["Weitere Unterverteilung", d.elektro.zaehler.weitereUV],
     ["Neue Unterverteilung", d.elektro.zaehler.neueUV],
@@ -1700,8 +1763,8 @@ async function buildPDF(d){
     {label:"Wanddurchbruch 2", url:d.elektro.zaehler.wanddurchbruecheFoto2}
   ]);
 
-  /* Hausanschluss */
-  await sectionPhotos(PDF_AMBER, "HAUSANSCHLUSS UND ERDUNG", [
+  /* Hausanschluss (Teil von AC) */
+  await sectionPhotos(PDF_AMBER, "HAUSANSCHLUSS", [
     ["Hausanschluss", d.elektro.hausanschluss.typ],
     ["Potenzialausgleichsschiene", d.elektro.hausanschluss.potenzialausgleich],
     ["Fundamenterder", d.elektro.hausanschluss.fundamenterder],
@@ -1725,21 +1788,21 @@ async function buildPDF(d){
     {label:"Kabelweg/Durchbruch", url:d.elektro.fotoWallboxDurchbruch}
   ]);
 
-  /* Gewünschte Komponenten */
+  /* Hardware */
   const komp = Object.entries(d.elektro.komponenten||{}).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ");
-  await sectionPhotos(PDF_AMBER, "GEWÜNSCHTE KOMPONENTEN", [
+  await sectionPhotos(PDF_AMBER, "HARDWARE", [
     ["Komponenten", komp],
-    ["Montageort Bemerkungen", d.elektro.montageortBemerkung],
+    ["Bemerkung", d.elektro.montageortBemerkung],
     ["Messkonzept", d.elektro.messkonzept]
   ], [
     {label:"Montageort Wechselrichter", url:d.elektro.fotoWechselrichter},
     {label:"Montageort Batteriespeicher", url:d.elektro.fotoSpeicher}
   ]);
 
-  /* Zusätzliche Bilder */
+  /* Weitere Fotos */
   const extra = (d.zusatzbilder||[]).map((f,i)=>({label:`Bild ${i+1}`, url:f})).filter(p=>p.url);
   if(extra.length){
-    sectionHeader("ZUSÄTZLICHE BILDER", PDF_GREEN);
+    sectionHeader("WEITERE FOTOS", PDF_GREEN);
     await photoGrid(extra);
   }
 

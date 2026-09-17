@@ -641,6 +641,7 @@ let records = [];
 let currentRecordId = null;
 let screen = "home"; // 'home' | 'form' | 'drafts' | 'fertig'
 let storageOK = true;
+const pdfCache = {}; // id -> { status: 'building'|'ready'|'error', blob, filename }
 let saveTimer = null;
 let lastSavedAt = null;
 
@@ -801,14 +802,37 @@ function menuDeleteCurrent(){
     render();
   });
 }
-async function menuDownloadPDF(){
-  await downloadPDFOrFallback(S);
-  menuOpen = false; render();
+/* PDF-Erstellung (langsam, Foto-Uploads) und Teilen (muss eine direkte,
+   frische Nutzer-Geste sein) sind bewusst getrennt: iOS erlaubt
+   navigator.share() nur, wenn es ohne nennenswerte Wartezeit nach einem
+   Tap aufgerufen wird. Wartet man erst das langsame PDF-Bauen ab und ruft
+   share() danach auf, lehnt iOS es stillschweigend ab und die App fällt
+   auf einen blob:-Link zurück, der beim Teilen den echten Nutzernamen
+   (github.io-Domain) offenlegt. Deshalb: zuerst bauen (preparePDF),
+   erst bei einem zweiten, echten Tap teilen (sharePDF). */
+async function preparePDF(id, data){
+  if(pdfCache[id] && (pdfCache[id].status === "building" || pdfCache[id].status === "ready")) return;
+  pdfCache[id] = { status: "building" };
+  render();
+  const doc = await buildPDFSafe(data);
+  if(!doc){ delete pdfCache[id]; render(); return; }
+  pdfCache[id] = { status: "ready", blob: doc.output("blob"), filename: pdfFilename(data) };
+  render();
+}
+function sharePDF(id){
+  const entry = pdfCache[id];
+  if(!entry || entry.status !== "ready") return;
+  triggerDownload(entry.blob, entry.filename);
+}
+function menuDownloadPDF(){
+  preparePDF("current", S);
 }
 async function quickPDF(id){
   const rec = records.find(r=>r.id===id);
   if(!rec) return;
-  await downloadPDFOrFallback(rec.data);
+  const entry = pdfCache[id];
+  if(entry && entry.status === "ready"){ sharePDF(id); }
+  else { await preparePDF(id, rec.data); }
 }
 
 /* ---------- Master render ---------- */
@@ -846,7 +870,12 @@ function renderFormScreen(){
       <div class="error-banner" id="errorBanner" style="display:none;"></div>
       ${menuOpen ? `
         <div class="menu-pop">
-          <button onclick="menuDownloadPDF()">Protokoll als PDF herunterladen</button>
+          ${(()=>{
+            const entry = pdfCache["current"];
+            if(entry && entry.status==="building") return `<button disabled>PDF wird erstellt…</button>`;
+            if(entry && entry.status==="ready") return `<button onclick="event.stopPropagation(); sharePDF('current'); menuOpen=false; render();">PDF öffnen</button>`;
+            return `<button onclick="event.stopPropagation(); menuDownloadPDF();">Protokoll als PDF herunterladen</button>`;
+          })()}
           <button class="danger" onclick="menuDeleteCurrent()">Diese Bestandsaufnahme löschen</button>
         </div>` : ""}
     </header>
@@ -892,7 +921,12 @@ function renderList(status){
             <div class="list-row-sub">${escapeHtml([r.data.standort.strasse,r.data.standort.ort].filter(Boolean).join(", ")) || "—"} · ${fmtDateTime(r.updatedAt)}</div>
           </div>
           <div class="list-row-actions">
-            ${status==="fertig" ? `<button onclick="event.stopPropagation(); quickPDF('${r.id}')">PDF</button>` : ""}
+            ${status==="fertig" ? (()=>{
+              const entry = pdfCache[r.id];
+              const label = entry && entry.status==="building" ? "PDF wird erstellt…" : entry && entry.status==="ready" ? "PDF öffnen" : "PDF erstellen";
+              const disabled = entry && entry.status==="building" ? "disabled" : "";
+              return `<button ${disabled} onclick="event.stopPropagation(); quickPDF('${r.id}')">${label}</button>`;
+            })() : ""}
             <button class="danger" onclick="event.stopPropagation(); deleteRecord('${r.id}')">${icon("trash",18)}</button>
           </div>
         </div>`).join("")}
@@ -2006,12 +2040,13 @@ function sendMail(){
 }
 async function finishRecord(){
   const finishedData = S;
+  const finishedId = currentRecordId;
   const rec = records.find(r=>r.id===currentRecordId);
   if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); }
   await saveRecords();
   screen = "fertig"; S = null; currentRecordId = null;
   render();
-  await downloadPDFOrFallback(finishedData);
+  preparePDF(finishedId, finishedData);
 }
 
 /* ---------- Boot ---------- */

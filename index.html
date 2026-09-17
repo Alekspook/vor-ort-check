@@ -443,8 +443,16 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   header{position:sticky;top:0;z-index:30;background:var(--card);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top);}
   .top-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;gap:10px;}
   .top-row h1{font-size:15.5px;margin:0;font-weight:700;letter-spacing:-0.01em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .icon-btn{border:none;background:var(--blue);color:#fff;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+  .icon-btn{border:none;background:var(--blue);color:#fff;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;position:relative;}
   .icon-btn:active{background:var(--blue-deep);}
+  .icon-btn.ready{background:var(--green);}
+  .icon-btn.ready:active{background:var(--green-deep);}
+  .icon-btn.building{background:var(--ink-soft);cursor:default;}
+  .icon-btn .spinner{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:iconspin .7s linear infinite;}
+  @keyframes iconspin{to{transform:rotate(360deg);}}
+  .list-row-actions button.ready{color:var(--green-deep);border-color:var(--green);}
+  .list-row-actions button.building{color:var(--ink-soft);cursor:default;}
+  .list-row-actions .spinner-sm{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink-soft);animation:iconspin .7s linear infinite;}
   .menu-btn{border:none;background:none;color:var(--ink);cursor:pointer;padding:4px 6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
   .save-indicator{font-size:11px;color:var(--ink-soft);padding:0 14px 8px;}
   .save-indicator-error{font-size:13px;font-weight:700;color:#fff;background:var(--red);padding:8px 14px;}
@@ -868,9 +876,9 @@ function renderFormScreen(){
         <h1>${escapeHtml(title)}</h1>
         ${(()=>{
           const entry = pdfCache["current"];
-          if(entry && entry.status==="building") return `<button class="icon-btn" title="PDF wird erstellt…" disabled>${icon("download",18)}</button>`;
-          if(entry && entry.status==="ready") return `<button class="icon-btn" title="Protokoll herunterladen" onclick="sharePDF('current')">${icon("download",18)}</button>`;
-          return `<button class="icon-btn" title="Protokoll herunterladen" onclick="menuDownloadPDF()">${icon("download",18)}</button>`;
+          if(entry && entry.status==="building") return `<button class="icon-btn building" title="PDF wird erstellt…" disabled><span class="spinner"></span></button>`;
+          if(entry && entry.status==="ready") return `<button class="icon-btn ready" title="Protokoll bereit — antippen zum Herunterladen" onclick="sharePDF('current')">${icon("check",18)}</button>`;
+          return `<button class="icon-btn" title="Protokoll als PDF herunterladen" onclick="menuDownloadPDF()">${icon("download",18)}</button>`;
         })()}
         <button class="menu-btn" onclick="toggleMenu(event)">${icon("dots")}</button>
       </div>
@@ -925,9 +933,9 @@ function renderList(status){
           <div class="list-row-actions">
             ${status==="fertig" ? (()=>{
               const entry = pdfCache[r.id];
-              const title = entry && entry.status==="building" ? "PDF wird erstellt…" : "Protokoll herunterladen";
-              const disabled = entry && entry.status==="building" ? "disabled" : "";
-              return `<button title="${title}" ${disabled} onclick="event.stopPropagation(); quickPDF('${r.id}')">${icon("download",18)}</button>`;
+              if(entry && entry.status==="building") return `<button class="building" title="PDF wird erstellt…" disabled><span class="spinner-sm"></span></button>`;
+              if(entry && entry.status==="ready") return `<button class="ready" title="Protokoll bereit — antippen zum Herunterladen" onclick="event.stopPropagation(); quickPDF('${r.id}')">${icon("check",18)}</button>`;
+              return `<button title="Protokoll als PDF herunterladen" onclick="event.stopPropagation(); quickPDF('${r.id}')">${icon("download",18)}</button>`;
             })() : ""}
             <button class="danger" onclick="event.stopPropagation(); deleteRecord('${r.id}')">${icon("trash",18)}</button>
           </div>

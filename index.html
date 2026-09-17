@@ -1596,8 +1596,9 @@ async function uploadPhotoForLink(dataUrl){
   }
 }
 
-const PDF_INK = [20,33,61], PDF_INK_SOFT = [95,106,130], PDF_GREEN = [47,111,78], PDF_AMBER = [184,123,28], PDF_LINE = [217,222,229], PDF_PAPER = [244,246,248];
+const PDF_INK = [22,58,87], PDF_INK_SOFT = [92,124,147], PDF_BLUE = [46,155,224], PDF_BLUE_DEEP = [28,126,192], PDF_LINE = [211,231,245], PDF_PAPER = [234,246,253], PDF_RED = [225,82,82];
 const KOMP_LABELS = { hybrid:"Wechselrichter", batterie:"Batteriespeicher", notstrom:"Notstrom" };
+const BERATER_TELEFON = "01795230595";
 
 async function buildPDF(d){
   const { jsPDF } = window.jspdf;
@@ -1631,13 +1632,15 @@ async function buildPDF(d){
   function startNewPage(){ doc.addPage(); slimHeader(); y = 22; }
   function checkSpace(h){ if(y + h > pageH - bottomMargin) startNewPage(); }
 
+  let kvIndex = 0;
   function sectionHeader(title, color){
     checkSpace(15);
-    fillCol(color); doc.rect(marginX, y, 3, 6, "F");
-    doc.setFontSize(11.5); doc.setFont(undefined,"bold"); col(color);
-    doc.text(title, marginX+6, y+5);
-    y += 9;
-    drawCol(PDF_LINE); doc.setLineWidth(0.25);
+    kvIndex = 0;
+    fillCol(color || PDF_BLUE_DEEP); doc.roundedRect(marginX, y, 3.2, 7, 0.9, 0.9, "F");
+    doc.setFontSize(11.5); doc.setFont(undefined,"bold"); col(PDF_INK);
+    doc.text(title, marginX+7, y+5.3);
+    y += 10;
+    drawCol(PDF_LINE); doc.setLineWidth(0.3);
     doc.line(marginX, y, marginX+contentW, y);
     y += 6;
     col(PDF_INK);
@@ -1649,11 +1652,28 @@ async function buildPDF(d){
     const lines = doc.splitTextToSize(String(value), contentW - labelW);
     const rowH = Math.max(lines.length*4.4, 5.2);
     checkSpace(rowH+1.5);
+    if(kvIndex % 2 === 1){
+      fillCol(PDF_PAPER);
+      doc.rect(marginX-2, y-1, contentW+4, rowH+2, "F");
+    }
+    kvIndex++;
     doc.setFont(undefined,"bold"); col(PDF_INK_SOFT);
     doc.text(label, marginX, y+3.6);
     doc.setFont(undefined,"normal"); col(PDF_INK);
     doc.text(lines, marginX+labelW, y+3.6);
     y += rowH + 1.6;
+  }
+  function totalRow(label, value){
+    if(!value) return;
+    checkSpace(10);
+    fillCol(PDF_PAPER); doc.roundedRect(marginX-2, y-1, contentW+4, 8.5, 1.5, 1.5, "F");
+    drawCol(PDF_BLUE); doc.setLineWidth(0.4); doc.roundedRect(marginX-2, y-1, contentW+4, 8.5, 1.5, 1.5, "S");
+    doc.setFontSize(9.5); doc.setFont(undefined,"bold"); col(PDF_INK_SOFT);
+    doc.text(label, marginX+2, y+4.8);
+    doc.setFontSize(10.5); col(PDF_BLUE_DEEP);
+    doc.text(String(value), marginX+labelW, y+4.8);
+    y += 11;
+    kvIndex = 0;
   }
   async function photoGrid(photos){
     photos = photos.filter(p=>p.url);
@@ -1682,12 +1702,13 @@ async function buildPDF(d){
           if(p.publicUrl) doc.link(x, y, p.w, p.h, {url: p.publicUrl});
         }catch(e){
           fillCol(PDF_PAPER); doc.rect(x, y, colW, maxH, "F");
-          doc.setFontSize(8); col([184,68,60]);
+          doc.setFontSize(8); col(PDF_RED);
           doc.text("Bild nicht ladbar", x+3, y+10);
         }
-        drawCol(PDF_LINE); doc.setLineWidth(0.2);
+        drawCol(p.publicUrl ? PDF_BLUE : PDF_LINE); doc.setLineWidth(p.publicUrl ? 0.35 : 0.2);
         doc.rect(x, y, p.w, p.h);
-        doc.setFontSize(7.6); doc.setFont(undefined,"normal"); col(PDF_INK_SOFT);
+        doc.setFontSize(7.6); doc.setFont(undefined, p.publicUrl ? "bold" : "normal");
+        col(p.publicUrl ? PDF_BLUE_DEEP : PDF_INK_SOFT);
         doc.text(p.label + (p.publicUrl ? "  ·  antippen zum Öffnen" : ""), x, y + Math.max.apply(null,row.map(r=>r.h)) + 4.2);
       });
       y += rowH + 3;
@@ -1703,35 +1724,45 @@ async function buildPDF(d){
 
   /* Titelblock */
   fillCol(PDF_INK); doc.rect(0,0,pageW,32,"F");
+  fillCol(PDF_BLUE); doc.rect(0,32,pageW,1.6,"F");
   doc.setTextColor(255,255,255);
   doc.setFontSize(17); doc.setFont(undefined,"bold");
   doc.text("Bestandsaufnahme Protokoll", marginX, 15);
   doc.setFontSize(10.5); doc.setFont(undefined,"normal");
+  col([161,214,247]);
   doc.text("DWB-Energie", marginX, 23);
+  doc.setTextColor(255,255,255);
   doc.setFontSize(9);
-  doc.text(formatDateDE(d.grunddaten.besichtigtAm) || "", pageW-marginX, 15, {align:"right"});
-  doc.text("Besichtigt von " + (d.grunddaten.besichtigtVon||""), pageW-marginX, 21, {align:"right"});
-  y = 40;
+  doc.text(formatDateDE(d.grunddaten.besichtigtAm) || "", pageW-marginX, 12, {align:"right"});
+  doc.text("Besichtigt von " + (d.grunddaten.besichtigtVon||""), pageW-marginX, 17.5, {align:"right"});
+  col([161,214,247]);
+  doc.setFontSize(8);
+  if(VERTRIEB_EMAIL) doc.text(VERTRIEB_EMAIL, pageW-marginX, 23, {align:"right"});
+  if(BERATER_TELEFON) doc.text(BERATER_TELEFON, pageW-marginX, 28, {align:"right"});
+  y = 41;
 
   /* Info-Box Interessent/in / Standort */
   const boxH = 27;
   checkSpace(boxH+6);
-  fillCol(PDF_PAPER); doc.roundedRect(marginX, y, contentW, boxH, 2, 2, "F");
+  fillCol(PDF_PAPER); doc.roundedRect(marginX, y, contentW, boxH, 2.5, 2.5, "F");
+  fillCol(PDF_BLUE); doc.roundedRect(marginX, y, 1.6, boxH, 0.8, 0.8, "F");
   const halfW = contentW/2;
-  doc.setFontSize(8); doc.setFont(undefined,"bold"); col(PDF_INK_SOFT);
-  doc.text("INTERESSENT/IN", marginX+6, y+7);
-  doc.text("STANDORT", marginX+halfW+6, y+7);
+  drawCol(PDF_LINE); doc.setLineWidth(0.25);
+  doc.line(marginX+halfW, y+5, marginX+halfW, y+boxH-5);
+  doc.setFontSize(8); doc.setFont(undefined,"bold"); col(PDF_BLUE_DEEP);
+  doc.text("INTERESSENT/IN", marginX+7, y+7);
+  doc.text("STANDORT", marginX+halfW+7, y+7);
   doc.setFontSize(9.5); doc.setFont(undefined,"normal"); col(PDF_INK);
-  doc.text([d.kunde.anrede,custName].filter(Boolean).join(" ") || "–", marginX+6, y+13);
-  doc.text(d.kunde.telefon || "", marginX+6, y+18.5);
-  doc.text(d.kunde.email || "", marginX+6, y+24);
-  doc.text([d.standort.strasse,d.standort.nr].filter(Boolean).join(" ") || "–", marginX+halfW+6, y+13);
-  doc.text([d.standort.plz,d.standort.ort].filter(Boolean).join(" ") || "", marginX+halfW+6, y+18.5);
+  doc.text([d.kunde.anrede,custName].filter(Boolean).join(" ") || "–", marginX+7, y+13);
+  doc.text(d.kunde.telefon || "", marginX+7, y+18.5);
+  doc.text(d.kunde.email || "", marginX+7, y+24);
+  doc.text([d.standort.strasse,d.standort.nr].filter(Boolean).join(" ") || "–", marginX+halfW+7, y+13);
+  doc.text([d.standort.plz,d.standort.ort].filter(Boolean).join(" ") || "", marginX+halfW+7, y+18.5);
   y += boxH + 9;
   col(PDF_INK);
 
   /* DC */
-  sectionHeader("DC", PDF_GREEN);
+  sectionHeader("DC", PDF_BLUE_DEEP);
   kv("Kategorie", d.gebaeude.kategorie);
   kv("Besonderheiten", d.gebaeude.besonderheiten);
   y += 3;
@@ -1739,7 +1770,7 @@ async function buildPDF(d){
   /* Dächer */
   for(let i=0;i<d.daecher.length;i++){
     const r = d.daecher[i];
-    await sectionPhotos(PDF_GREEN, `DACH ${i+1}`, [
+    await sectionPhotos(PDF_BLUE_DEEP, `DACH ${i+1}`, [
       ["Art", r.dachart],
       ["Eindeckung", r.dachaufbau],
       ["Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – ")],
@@ -1759,7 +1790,7 @@ async function buildPDF(d){
   }
 
   /* Verbrauch */
-  sectionHeader("VERBRAUCH", PDF_AMBER);
+  sectionHeader("VERBRAUCH", PDF_BLUE_DEEP);
   kv("Hausstromverbrauch", d.elektro.stromverbrauch ? d.elektro.stromverbrauch+" kWh/Jahr" : "");
   kv("Wärmepumpe", d.elektro.grossverbraucher.waermepumpe ? d.elektro.grossverbraucher.waermepumpe+" kWh/Jahr" : "");
   kv("E-Auto", d.elektro.grossverbraucher.eauto ? d.elektro.grossverbraucher.eauto+" kWh/Jahr" : "");
@@ -1767,11 +1798,11 @@ async function buildPDF(d){
   kv("Pool", d.elektro.grossverbraucher.pool ? d.elektro.grossverbraucher.pool+" kWh/Jahr" : "");
   const gesamtverbrauch = [d.elektro.stromverbrauch, d.elektro.grossverbraucher.waermepumpe, d.elektro.grossverbraucher.eauto, d.elektro.grossverbraucher.sauna, d.elektro.grossverbraucher.pool]
     .map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
-  kv("Gesamtverbrauch", gesamtverbrauch ? gesamtverbrauch.toLocaleString("de-DE")+" kWh/Jahr" : "");
+  totalRow("Gesamtverbrauch", gesamtverbrauch ? gesamtverbrauch.toLocaleString("de-DE")+" kWh/Jahr" : "");
   y += 3;
 
   /* AC – Zählerschrank */
-  await sectionPhotos(PDF_AMBER, "AC – ZÄHLERSCHRANK", [
+  await sectionPhotos(PDF_BLUE_DEEP, "AC – ZÄHLERSCHRANK", [
     ["Neuer Zählerschrank", d.elektro.zaehler.neuerZaehlerschrank],
     ["Weitere Unterverteilung", d.elektro.zaehler.weitereUV],
     ["Neue Unterverteilung", d.elektro.zaehler.neueUV],
@@ -1791,7 +1822,7 @@ async function buildPDF(d){
   ]);
 
   /* Hausanschluss (Teil von AC) */
-  await sectionPhotos(PDF_AMBER, "HAUSANSCHLUSS", [
+  await sectionPhotos(PDF_BLUE_DEEP, "HAUSANSCHLUSS", [
     ["Hausanschluss", d.elektro.hausanschluss.typ],
     ["Potenzialausgleichsschiene", d.elektro.hausanschluss.potenzialausgleich],
     ["Fundamenterder", d.elektro.hausanschluss.fundamenterder],
@@ -1803,7 +1834,7 @@ async function buildPDF(d){
   ]);
 
   /* Wärmepumpe & Wallbox */
-  await sectionPhotos(PDF_AMBER, "WÄRMEPUMPE & WALLBOX", [
+  await sectionPhotos(PDF_BLUE_DEEP, "WÄRMEPUMPE & WALLBOX", [
     ["Wärmepumpe", d.elektro.waermepumpe],
     ["Wallbox", d.elektro.wallbox],
     ["Durchbrüche notwendig", d.elektro.wallboxDurchbrueche]
@@ -1817,7 +1848,7 @@ async function buildPDF(d){
 
   /* Hardware */
   const komp = Object.entries(d.elektro.komponenten||{}).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ");
-  await sectionPhotos(PDF_AMBER, "HARDWARE", [
+  await sectionPhotos(PDF_BLUE_DEEP, "HARDWARE", [
     ["Komponenten", komp],
     ["Bemerkung", d.elektro.montageortBemerkung],
     ["Messkonzept", d.elektro.messkonzept]
@@ -1829,7 +1860,7 @@ async function buildPDF(d){
   /* Weitere Fotos */
   const extra = (d.zusatzbilder||[]).map((f,i)=>({label:`Bild ${i+1}`, url:f})).filter(p=>p.url);
   if(extra.length){
-    sectionHeader("WEITERE FOTOS", PDF_GREEN);
+    sectionHeader("WEITERE FOTOS", PDF_BLUE_DEEP);
     await photoGrid(extra);
   }
 
@@ -1837,9 +1868,12 @@ async function buildPDF(d){
   const totalPages = doc.internal.getNumberOfPages();
   for(let p=1;p<=totalPages;p++){
     doc.setPage(p);
-    doc.setFontSize(8); col([150,158,173]); doc.setFont(undefined,"normal");
-    doc.text(`Seite ${p} / ${totalPages}`, pageW-marginX, pageH-8, {align:"right"});
+    drawCol(PDF_LINE); doc.setLineWidth(0.25);
+    doc.line(marginX, pageH-12, pageW-marginX, pageH-12);
+    doc.setFontSize(8); col(PDF_INK_SOFT); doc.setFont(undefined,"normal");
     doc.text("Bestandsaufnahme Protokoll · DWB-Energie", marginX, pageH-8);
+    doc.setFont(undefined,"bold"); col(PDF_BLUE_DEEP);
+    doc.text(`Seite ${p} / ${totalPages}`, pageW-marginX, pageH-8, {align:"right"});
   }
 
   return doc;

@@ -1744,6 +1744,31 @@ async function buildPDF(d){
     y += 11;
     kvIndex = 0;
   }
+  /* Reserviert vorab den Platz für eine ganze Gruppe zusammengehöriger
+     kv-Zeilen, damit ein Seitenumbruch nicht mitten in der Gruppe landet
+     (z.B. Verbrauchswerte getrennt von der Gesamtsumme). Nur die Gruppe
+     als Ganzes springt ggf. auf die nächste Seite, nicht jede Zeile einzeln. */
+  function kvRowHeight(value){
+    const lines = doc.splitTextToSize(String(value), contentW - labelW);
+    return Math.max(lines.length*4.4, 5.2) + 1.6;
+  }
+  function kvGroup(pairs){
+    const visible = pairs.filter(([l,v])=>v);
+    if(!visible.length) return;
+    doc.setFontSize(9.5);
+    const totalH = visible.reduce((sum,[l,v])=>sum + kvRowHeight(v), 0);
+    checkSpace(totalH);
+    visible.forEach(([l,v])=>kv(l,v));
+  }
+  function kvGroupWithTotal(pairs, totalPair){
+    const visible = pairs.filter(([l,v])=>v);
+    doc.setFontSize(9.5);
+    let totalH = visible.reduce((sum,[l,v])=>sum + kvRowHeight(v), 0);
+    if(totalPair && totalPair[1]) totalH += 11;
+    if(totalH>0) checkSpace(totalH);
+    visible.forEach(([l,v])=>kv(l,v));
+    if(totalPair && totalPair[1]) totalRow(totalPair[0], totalPair[1]);
+  }
   async function photoGrid(photos){
     photos = photos.filter(p=>p.url);
     if(!photos.length) return;
@@ -1786,7 +1811,7 @@ async function buildPDF(d){
   }
   async function sectionPhotos(color, title, kvPairs, photos){
     sectionHeader(title, color);
-    kvPairs.forEach(([l,v])=>kv(l,v));
+    kvGroup(kvPairs);
     await photoGrid(photos);
     y += 3;
   }
@@ -1799,10 +1824,12 @@ async function buildPDF(d){
   }
   async function roofSection(color, title, r){
     sectionHeader(title, color);
-    kv("Art", r.dachart);
-    kv("Eindeckung", r.dachaufbau);
-    kv("Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – "));
-    kv("Bemerkungen", r.bemerkung1);
+    kvGroup([
+      ["Art", r.dachart],
+      ["Eindeckung", r.dachaufbau],
+      ["Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – ")],
+      ["Bemerkungen", r.bemerkung1]
+    ]);
     const dachfotos = [
       {label:"Dachfoto 1", url:r.fotos[0]}, {label:"Dachfoto 2", url:r.fotos[1]},
       {label:"Dachfoto 3", url:r.fotos[2]}, {label:"Dachfoto 4", url:r.fotos[3]}, {label:"Dachfoto 5", url:r.fotos[4]},
@@ -1820,9 +1847,11 @@ async function buildPDF(d){
       {label:"Wanddurchbruch 2", url:r.wanddurchbruecheFotos[1]},
       {label:"Wanddurchbruch 3", url:r.wanddurchbruecheFotos[2]}
     ]);
-    kv("Traufhöhe", r.traufe8);
-    kv("Gerüst erforderlich", r.geruest);
-    kv("Bemerkungen Gerüst", r.geruestBemerkung);
+    kvGroup([
+      ["Traufhöhe", r.traufe8],
+      ["Gerüst erforderlich", r.geruest],
+      ["Bemerkungen Gerüst", r.geruestBemerkung]
+    ]);
     y += 3;
   }
 
@@ -1867,8 +1896,10 @@ async function buildPDF(d){
 
   /* DC */
   sectionHeader("DC", PDF_BLUE_DEEP);
-  kv("Kategorie", d.gebaeude.kategorie);
-  kv("Besonderheiten", d.gebaeude.besonderheiten);
+  kvGroup([
+    ["Kategorie", d.gebaeude.kategorie],
+    ["Besonderheiten", d.gebaeude.besonderheiten]
+  ]);
   y += 3;
 
   /* Dächer */
@@ -1878,14 +1909,15 @@ async function buildPDF(d){
 
   /* Verbrauch */
   sectionHeader("VERBRAUCH", PDF_BLUE_DEEP);
-  kv("Hausstromverbrauch", d.elektro.stromverbrauch ? d.elektro.stromverbrauch+" kWh/Jahr" : "");
-  kv("Wärmepumpe", d.elektro.grossverbraucher.waermepumpe ? d.elektro.grossverbraucher.waermepumpe+" kWh/Jahr" : "");
-  kv("E-Auto", d.elektro.grossverbraucher.eauto ? d.elektro.grossverbraucher.eauto+" kWh/Jahr" : "");
-  kv("Sauna", d.elektro.grossverbraucher.sauna ? d.elektro.grossverbraucher.sauna+" kWh/Jahr" : "");
-  kv("Pool", d.elektro.grossverbraucher.pool ? d.elektro.grossverbraucher.pool+" kWh/Jahr" : "");
   const gesamtverbrauch = [d.elektro.stromverbrauch, d.elektro.grossverbraucher.waermepumpe, d.elektro.grossverbraucher.eauto, d.elektro.grossverbraucher.sauna, d.elektro.grossverbraucher.pool]
     .map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
-  totalRow("Gesamtverbrauch", gesamtverbrauch ? gesamtverbrauch.toLocaleString("de-DE")+" kWh/Jahr" : "");
+  kvGroupWithTotal([
+    ["Hausstromverbrauch", d.elektro.stromverbrauch ? d.elektro.stromverbrauch+" kWh/Jahr" : ""],
+    ["Wärmepumpe", d.elektro.grossverbraucher.waermepumpe ? d.elektro.grossverbraucher.waermepumpe+" kWh/Jahr" : ""],
+    ["E-Auto", d.elektro.grossverbraucher.eauto ? d.elektro.grossverbraucher.eauto+" kWh/Jahr" : ""],
+    ["Sauna", d.elektro.grossverbraucher.sauna ? d.elektro.grossverbraucher.sauna+" kWh/Jahr" : ""],
+    ["Pool", d.elektro.grossverbraucher.pool ? d.elektro.grossverbraucher.pool+" kWh/Jahr" : ""]
+  ], ["Gesamtverbrauch", gesamtverbrauch ? gesamtverbrauch.toLocaleString("de-DE")+" kWh/Jahr" : ""]);
   y += 3;
 
   /* AC – Zählerschrank */

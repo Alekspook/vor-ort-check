@@ -697,6 +697,7 @@ async function saveRecords(){
   updateSaveIndicator();
 }
 function scheduleAutosave(){
+  delete pdfCache["current"];
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveCurrentRecord, 700);
 }
@@ -744,6 +745,7 @@ let menuOpen = false;
 
 /* ---------- Navigation ---------- */
 function startNewRecord(){
+  delete pdfCache["current"];
   S = freshState();
   const rec = { id:S.meta.id, status:"draft", updatedAt:Date.now(), data:S };
   records.unshift(rec);
@@ -755,6 +757,7 @@ function startNewRecord(){
 function openRecord(id){
   const rec = records.find(r=>r.id===id);
   if(!rec) return;
+  delete pdfCache["current"];
   S = rec.data;
   currentRecordId = id;
   screen = "form";
@@ -863,19 +866,18 @@ function renderFormScreen(){
       <div class="top-row">
         <button class="menu-btn" onclick="goHome()" title="Zur Startseite">${icon("arrowLeft")}</button>
         <h1>${escapeHtml(title)}</h1>
-        <button class="icon-btn" title="Fertigstellen" onclick="handleSend()">${icon("envelope",18)}</button>
+        ${(()=>{
+          const entry = pdfCache["current"];
+          if(entry && entry.status==="building") return `<button class="icon-btn" title="PDF wird erstellt…" disabled>${icon("download",18)}</button>`;
+          if(entry && entry.status==="ready") return `<button class="icon-btn" title="Protokoll herunterladen" onclick="sharePDF('current')">${icon("download",18)}</button>`;
+          return `<button class="icon-btn" title="Protokoll herunterladen" onclick="menuDownloadPDF()">${icon("download",18)}</button>`;
+        })()}
         <button class="menu-btn" onclick="toggleMenu(event)">${icon("dots")}</button>
       </div>
       <div class="save-indicator" id="saveIndicator"></div>
       <div class="error-banner" id="errorBanner" style="display:none;"></div>
       ${menuOpen ? `
         <div class="menu-pop">
-          ${(()=>{
-            const entry = pdfCache["current"];
-            if(entry && entry.status==="building") return `<button disabled>PDF wird erstellt…</button>`;
-            if(entry && entry.status==="ready") return `<button onclick="event.stopPropagation(); sharePDF('current'); menuOpen=false; render();">PDF öffnen</button>`;
-            return `<button onclick="event.stopPropagation(); menuDownloadPDF();">Protokoll als PDF herunterladen</button>`;
-          })()}
           <button class="danger" onclick="menuDeleteCurrent()">Diese Bestandsaufnahme löschen</button>
         </div>` : ""}
     </header>
@@ -923,9 +925,9 @@ function renderList(status){
           <div class="list-row-actions">
             ${status==="fertig" ? (()=>{
               const entry = pdfCache[r.id];
-              const label = entry && entry.status==="building" ? "PDF wird erstellt…" : entry && entry.status==="ready" ? "PDF öffnen" : "PDF erstellen";
+              const title = entry && entry.status==="building" ? "PDF wird erstellt…" : "Protokoll herunterladen";
               const disabled = entry && entry.status==="building" ? "disabled" : "";
-              return `<button ${disabled} onclick="event.stopPropagation(); quickPDF('${r.id}')">${label}</button>`;
+              return `<button title="${title}" ${disabled} onclick="event.stopPropagation(); quickPDF('${r.id}')">${icon("download",18)}</button>`;
             })() : ""}
             <button class="danger" onclick="event.stopPropagation(); deleteRecord('${r.id}')">${icon("trash",18)}</button>
           </div>
@@ -992,7 +994,7 @@ function updateVerbrauchTotal(){
   const el = document.getElementById("verbrauchTotalValue");
   if(el) el.textContent = verbrauchTotal().toLocaleString("de-DE") + " kWh/Jahr";
 }
-function photoSlot(path, label, required){
+function photoSlot(path, label, required, noSketch){
   const val = getPath(S, path);
   if(val){
     return `
@@ -1002,9 +1004,10 @@ function photoSlot(path, label, required){
         <img src="${val}" alt="${label}">
         <button type="button" class="photo-remove" onclick="setPath(S,'${path}',null); scheduleAutosave(); render();">Entfernen</button>
       </div>
+      ${noSketch ? "" : `
       <div class="sketch-actions">
         <button onclick="openSketchModal('${path}','${escapeAttr(label)}')">${icon("edit",16)} Auf Foto einzeichnen</button>
-      </div>
+      </div>`}
     </div>`;
   }
   return `
@@ -1054,7 +1057,8 @@ const ICON_PATHS = {
   undo: '<path d="M3 10h9a5 5 0 0 1 0 10h-4"/><path d="M3 10l4-4"/><path d="M3 10l4 4"/>',
   battery: '<rect x="3" y="8" width="15" height="8" rx="1.5"/><line x1="20" y1="10.5" x2="20" y2="13.5"/>',
   close: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
-  search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>'
+  search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  download: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>'
 };
 const ICON_FILLED = {
   dots: '<circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/>',
@@ -1200,8 +1204,8 @@ function renderAllSections(){
         ${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Zusätzliches Bild ${i+1}`, false)).join("")}
         <button class="add-btn" onclick="addExtraPhoto()">+ Bild hinzufügen</button>
       </div>
-      <button type="button" class="action-btn primary big" onclick="handleSend()">${icon("check",20)} Abschließen &amp; Download</button>
-      <div class="note" style="text-align:center;">Erstellt das PDF und lädt es herunter. Das automatische Übermitteln an den Kunden folgt in einer späteren Version.</div>
+      <button type="button" class="action-btn primary big" onclick="handleSend()">${icon("check",20)} Abschließen</button>
+      <div class="note" style="text-align:center;">Verschiebt den Vor-Ort-Check nach "Abgeschlossen". Das Protokoll als PDF kannst du oben rechts oder in "Abgeschlossen" herunterladen.</div>
     </div>
   `;
 }
@@ -1221,14 +1225,14 @@ function renderRoofs(){
       ${textareaField("Bemerkungen", `daecher.${i}.bemerkung1`)}
 
       <div class="subgroup">Dachfotos</div>
-      ${photoSlot(`daecher.${i}.fotos.0`, "Dachfoto 1", true)}
-      ${photoSlot(`daecher.${i}.fotos.1`, "Dachfoto 2", false)}
-      ${photoSlot(`daecher.${i}.fotos.2`, "Dachfoto 3", false)}
-      ${photoSlot(`daecher.${i}.fotos.3`, "Dachfoto 4", false)}
-      ${photoSlot(`daecher.${i}.fotos.4`, "Dachfoto 5", false)}
-      ${photoSlot(`daecher.${i}.drohnenFotos.0`, "Dachfoto 6", false)}
-      ${photoSlot(`daecher.${i}.drohnenFotos.1`, "Dachfoto 7", false)}
-      ${photoSlot(`daecher.${i}.drohnenFotos.2`, "Dachfoto 8", false)}
+      ${photoSlot(`daecher.${i}.fotos.0`, "Dachfoto 1", true, true)}
+      ${photoSlot(`daecher.${i}.fotos.1`, "Dachfoto 2", false, true)}
+      ${photoSlot(`daecher.${i}.fotos.2`, "Dachfoto 3", false, true)}
+      ${photoSlot(`daecher.${i}.fotos.3`, "Dachfoto 4", false, true)}
+      ${photoSlot(`daecher.${i}.fotos.4`, "Dachfoto 5", false, true)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.0`, "Dachfoto 6", false, true)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.1`, "Dachfoto 7", false, true)}
+      ${photoSlot(`daecher.${i}.drohnenFotos.2`, "Dachfoto 8", false, true)}
 
       ${radioField("Kabelweg", `daecher.${i}.dcLeitungsweg`, ["vorh. Leerrohr","alter Kaminschacht","Fassade im Alurohr","Sonstige"])}
       ${d.dcLeitungsweg ? `
@@ -1348,7 +1352,7 @@ function sketchPointerDown(e){
     return;
   }
   drawing = true;
-  sketchCurrentStroke = { points:[{x,y}], color:"#2FA97C", width:2 };
+  sketchCurrentStroke = { points:[{x,y}], color:"#2FA97C", width:3.5 };
 }
 function sketchPointerMove(e){
   if(!drawing || !sketchCtx || sketchMode !== "pen" || !sketchCurrentStroke) return;

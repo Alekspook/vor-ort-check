@@ -1587,9 +1587,13 @@ async function uploadPhotoForLink(dataUrl){
     const hash = await sha256Hex(dataUrl);
     const path = `${hash}.${ext}`;
     const blob = await (await fetch(dataUrl)).blob();
-    const { error } = await supabaseClient.storage.from("photos").upload(path, blob, { contentType: mime, upsert: true });
-    if(error) throw error;
-    return supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
+    const uploadPromise = supabaseClient.storage.from("photos").upload(path, blob, { contentType: mime, upsert: true })
+      .then(({error})=>{
+        if(error) throw error;
+        return supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
+      });
+    const timeout = new Promise(resolve=>setTimeout(()=>resolve(null), 6000));
+    return await Promise.race([uploadPromise, timeout]);
   }catch(e){
     console.warn("Foto-Upload fehlgeschlagen (keine Internetverbindung?)", e);
     return null;
@@ -1616,6 +1620,12 @@ async function buildPDF(d){
     if(!uploadCache.has(url)) uploadCache.set(url, uploadPhotoForLink(url));
     return uploadCache.get(url);
   }
+  (function prewarmPhotos(obj){
+    if(!obj) return;
+    if(typeof obj === "string"){ if(obj.indexOf("data:image")===0){ orientedDataUrl(obj); uploadedUrlFor(obj); } return; }
+    if(Array.isArray(obj)){ obj.forEach(prewarmPhotos); return; }
+    if(typeof obj === "object"){ Object.values(obj).forEach(prewarmPhotos); }
+  })(d);
   let y = 16;
 
   function col(c){ doc.setTextColor(c[0],c[1],c[2]); }
@@ -1955,12 +1965,13 @@ function sendMail(){
   window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
 }
 async function finishRecord(){
-  await downloadPDFOrFallback(S);
+  const finishedData = S;
   const rec = records.find(r=>r.id===currentRecordId);
   if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); }
   await saveRecords();
   screen = "fertig"; S = null; currentRecordId = null;
   render();
+  await downloadPDFOrFallback(finishedData);
 }
 
 /* ---------- Boot ---------- */

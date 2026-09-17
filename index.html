@@ -1166,14 +1166,6 @@ function renderAllSections(){
         ${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Zusätzliches Bild ${i+1}`, false)).join("")}
         <button class="add-btn" onclick="addExtraPhoto()">+ Bild hinzufügen</button>
       </div>
-      <div class="card" id="emailCard">
-        <h3>E-Mail an den Kunden<span class="hint">Optional — später hier automatisch.</span></h3>
-        <div class="note" style="margin:0 0 12px;">Öffnet einen E-Mail-Entwurf an die oben eingetragene Kunden-E-Mail (${escapeHtml(S.kunde.email||"— noch nicht eingetragen —")}), in Kopie an ${VERTRIEB_EMAIL}. Das PDF musst du dort noch manuell anhängen.</div>
-        ${textField("Weitere E-Mail-Adresse", "email.weitere", {type:"email"})}
-        ${textField("Betreff", "email.betreff")}
-        ${textareaField("Nachricht", "email.nachricht", {placeholder: defaultNachricht()})}
-        <button type="button" class="action-btn" onclick="sendMail()">${icon("envelope",18)} E-Mail-Entwurf öffnen</button>
-      </div>
       <button type="button" class="action-btn primary big" onclick="handleSend()">${icon("check",20)} Fertig &amp; Abschicken</button>
       <div class="note" style="text-align:center;">Erstellt das PDF und lädt es herunter. Das automatische Übermitteln an den Kunden folgt in einer späteren Version.</div>
     </div>

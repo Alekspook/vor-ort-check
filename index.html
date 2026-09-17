@@ -1210,7 +1210,7 @@ function renderRoofs(){
           ${photoSlot(`daecher.${i}.wanddurchbruecheFotos.2`, "Foto Wanddurchbruch 3", false)}
         </div>` : ""}
 
-      ${radioField("Traufhöhe", `daecher.${i}.traufe8`, ["über 8 Meter","unter 8 Meter"])}
+      ${radioField("Traufhöhe", `daecher.${i}.traufe8`, ["über 5m","unter 5m"])}
       ${radioField("Gerüst erforderlich", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","muss geprüft werden","Kunde stellt Gerüst"])}
       ${textareaField("Bemerkungen", `daecher.${i}.geruestBemerkung`)}
     </div>
@@ -1524,7 +1524,7 @@ function buildTextSummary(d){
   t += `STANDORT\n${[d.standort.strasse,d.standort.nr].filter(Boolean).join(" ")}, ${d.standort.plz} ${d.standort.ort}\n\n`;
   t += `DC\nKategorie: ${d.gebaeude.kategorie}\nBesonderheiten: ${d.gebaeude.besonderheiten||"-"}\n\n`;
   d.daecher.forEach((r,i)=>{
-    t += `DACH ${i+1}\nArt: ${r.dachart||"-"}\nEindeckung: ${r.dachaufbau||"-"}\nKabelweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nGerüst erforderlich: ${r.geruest||"-"}\n\n`;
+    t += `DACH ${i+1}\nArt: ${r.dachart||"-"}\nEindeckung: ${r.dachaufbau||"-"}\nKabelweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nTraufhöhe: ${r.traufe8||"-"} | Gerüst erforderlich: ${r.geruest||"-"}\n\n`;
   });
   const g = d.elektro.grossverbraucher||{};
   const gesamtverbrauch = [d.elektro.stromverbrauch, g.waermepumpe, g.eauto, g.sauna, g.pool].map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
@@ -1731,6 +1731,41 @@ async function buildPDF(d){
     await photoGrid(photos);
     y += 3;
   }
+  function subheading(text){
+    checkSpace(7);
+    doc.setFontSize(8); doc.setFont(undefined,"bold"); col(PDF_BLUE_DEEP);
+    doc.text(text.toUpperCase(), marginX, y+3.4);
+    y += 6.5;
+    col(PDF_INK);
+  }
+  async function roofSection(color, title, r){
+    sectionHeader(title, color);
+    kv("Art", r.dachart);
+    kv("Eindeckung", r.dachaufbau);
+    kv("Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – "));
+    kv("Bemerkungen", r.bemerkung1);
+    const dachfotos = [
+      {label:"Dachfoto 1", url:r.fotos[0]}, {label:"Dachfoto 2", url:r.fotos[1]},
+      {label:"Dachfoto 3", url:r.fotos[2]}, {label:"Dachfoto 4", url:r.fotos[3]}, {label:"Dachfoto 5", url:r.fotos[4]},
+      {label:"Dachfoto 6", url:r.drohnenFotos[0]}, {label:"Dachfoto 7", url:r.drohnenFotos[1]}, {label:"Dachfoto 8", url:r.drohnenFotos[2]}
+    ];
+    if(dachfotos.some(p=>p.url)){
+      subheading("Dachfotos");
+      await photoGrid(dachfotos);
+    }
+    kv("Kabelweg", r.dcLeitungsweg);
+    await photoGrid([{label:"Kabelweg Bild 1", url:r.dcFotos[0]}, {label:"Kabelweg Bild 2", url:r.dcFotos[1]}]);
+    kv("Wanddurchbrüche", r.wanddurchbrueche);
+    await photoGrid([
+      {label:"Wanddurchbruch 1", url:r.wanddurchbruecheFotos[0]},
+      {label:"Wanddurchbruch 2", url:r.wanddurchbruecheFotos[1]},
+      {label:"Wanddurchbruch 3", url:r.wanddurchbruecheFotos[2]}
+    ]);
+    kv("Traufhöhe", r.traufe8);
+    kv("Gerüst erforderlich", r.geruest);
+    kv("Bemerkungen Gerüst", r.geruestBemerkung);
+    y += 3;
+  }
 
   /* Titelblock */
   fillCol(PDF_INK); doc.rect(0,0,pageW,32,"F");
@@ -1779,24 +1814,7 @@ async function buildPDF(d){
 
   /* Dächer */
   for(let i=0;i<d.daecher.length;i++){
-    const r = d.daecher[i];
-    await sectionPhotos(PDF_BLUE_DEEP, `DACH ${i+1}`, [
-      ["Art", r.dachart],
-      ["Eindeckung", r.dachaufbau],
-      ["Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – ")],
-      ["Bemerkungen", r.bemerkung1],
-      ["Kabelweg", r.dcLeitungsweg],
-      ["Wanddurchbrüche", r.wanddurchbrueche],
-      ["Traufhöhe", r.traufe8],
-      ["Gerüst erforderlich", r.geruest],
-      ["Bemerkungen Gerüst", r.geruestBemerkung]
-    ], [
-      {label:"Dachfoto 1", url:r.fotos[0]}, {label:"Dachfoto 2", url:r.fotos[1]},
-      {label:"Dachfoto 3", url:r.fotos[2]}, {label:"Dachfoto 4", url:r.fotos[3]}, {label:"Dachfoto 5", url:r.fotos[4]},
-      {label:"Dachfoto 6", url:r.drohnenFotos[0]}, {label:"Dachfoto 7", url:r.drohnenFotos[1]}, {label:"Dachfoto 8", url:r.drohnenFotos[2]},
-      {label:"Kabelweg 1", url:r.dcFotos[0]}, {label:"Kabelweg 2", url:r.dcFotos[1]},
-      {label:"Wanddurchbruch 1", url:r.wanddurchbruecheFotos[0]}, {label:"Wanddurchbruch 2", url:r.wanddurchbruecheFotos[1]}, {label:"Wanddurchbruch 3", url:r.wanddurchbruecheFotos[2]}
-    ]);
+    await roofSection(PDF_BLUE_DEEP, `DACH ${i+1}`, d.daecher[i]);
   }
 
   /* Verbrauch */
@@ -1812,49 +1830,58 @@ async function buildPDF(d){
   y += 3;
 
   /* AC – Zählerschrank */
-  await sectionPhotos(PDF_BLUE_DEEP, "AC – ZÄHLERSCHRANK", [
-    ["Neuer Zählerschrank", d.elektro.zaehler.neuerZaehlerschrank],
-    ["Weitere Unterverteilung", d.elektro.zaehler.weitereUV],
-    ["Neue Unterverteilung", d.elektro.zaehler.neueUV],
-    ["Wanddurchbrüche", d.elektro.zaehler.wanddurchbrueche]
-  ], [
+  sectionHeader("AC – ZÄHLERSCHRANK", PDF_BLUE_DEEP);
+  kv("Neuer Zählerschrank", d.elektro.zaehler.neuerZaehlerschrank);
+  const zaehlerFotos = [
     {label:"Übersicht", url:d.elektro.zaehler.uebersicht},
     {label:"Ohne Abdeckungen", url:d.elektro.zaehler.ohneAbdeckungen},
     {label:"Typenschild", url:d.elektro.zaehler.typenschild},
     {label:"Vorsicherung/SLS", url:d.elektro.zaehler.vorsicherung},
     {label:"Anschlussbereich", url:d.elektro.zaehler.anschlussbereich},
     {label:"Verteilerfeld 1", url:d.elektro.zaehler.verteilerfeld1},
-    {label:"Verteilerfeld 2", url:d.elektro.zaehler.verteilerfeld2},
-    {label:"Weitere Unterverteilung", url:d.elektro.zaehler.weitereUVFoto},
-    {label:"Neue Unterverteilung", url:d.elektro.zaehler.neueUVFoto},
+    {label:"Verteilerfeld 2", url:d.elektro.zaehler.verteilerfeld2}
+  ];
+  if(zaehlerFotos.some(p=>p.url)){
+    subheading("Zählerschrank-Fotos");
+    await photoGrid(zaehlerFotos);
+  }
+  kv("Weitere Unterverteilung", d.elektro.zaehler.weitereUV);
+  await photoGrid([{label:"Weitere Unterverteilung", url:d.elektro.zaehler.weitereUVFoto}]);
+  kv("Neue Unterverteilung", d.elektro.zaehler.neueUV);
+  await photoGrid([{label:"Neue Unterverteilung", url:d.elektro.zaehler.neueUVFoto}]);
+  kv("Wanddurchbrüche", d.elektro.zaehler.wanddurchbrueche);
+  await photoGrid([
     {label:"Wanddurchbruch 1", url:d.elektro.zaehler.wanddurchbruecheFoto1},
     {label:"Wanddurchbruch 2", url:d.elektro.zaehler.wanddurchbruecheFoto2}
   ]);
+  y += 3;
 
   /* Hausanschluss (Teil von AC) */
-  await sectionPhotos(PDF_BLUE_DEEP, "HAUSANSCHLUSS", [
-    ["Hausanschluss", d.elektro.hausanschluss.typ],
-    ["Potenzialausgleichsschiene", d.elektro.hausanschluss.potenzialausgleich],
-    ["Fundamenterder", d.elektro.hausanschluss.fundamenterder],
-    ["Bemerkungen", d.elektro.hausanschluss.bemerkung]
-  ], [
-    {label:"Übersicht", url:d.elektro.hausanschluss.foto},
-    {label:"Potenzialausgleichsschiene", url:d.elektro.hausanschluss.potenzialausgleichFoto},
-    {label:"Fundamenterder", url:d.elektro.hausanschluss.fundamenterderFoto}
-  ]);
+  sectionHeader("HAUSANSCHLUSS", PDF_BLUE_DEEP);
+  kv("Hausanschluss", d.elektro.hausanschluss.typ);
+  await photoGrid([{label:"Übersicht", url:d.elektro.hausanschluss.foto}]);
+  kv("Potenzialausgleichsschiene", d.elektro.hausanschluss.potenzialausgleich);
+  await photoGrid([{label:"Potenzialausgleichsschiene", url:d.elektro.hausanschluss.potenzialausgleichFoto}]);
+  kv("Fundamenterder", d.elektro.hausanschluss.fundamenterder);
+  await photoGrid([{label:"Fundamenterder", url:d.elektro.hausanschluss.fundamenterderFoto}]);
+  kv("Bemerkungen", d.elektro.hausanschluss.bemerkung);
+  y += 3;
 
   /* Wärmepumpe & Wallbox */
-  await sectionPhotos(PDF_BLUE_DEEP, "WÄRMEPUMPE & WALLBOX", [
-    ["Wärmepumpe", d.elektro.waermepumpe],
-    ["Wallbox", d.elektro.wallbox],
-    ["Durchbrüche notwendig", d.elektro.wallboxDurchbrueche]
-  ], [
+  sectionHeader("WÄRMEPUMPE & WALLBOX", PDF_BLUE_DEEP);
+  kv("Wärmepumpe", d.elektro.waermepumpe);
+  await photoGrid([
     {label:"Typenschild Wärmepumpe", url:d.elektro.fotoWPTypenschild},
-    {label:"Wärmepumpenzähler", url:d.elektro.fotoWPZaehler},
-    {label:"Wallbox Typenschild", url:d.elektro.fotoWallboxTypenschild},
-    {label:"Wallbox Standortwunsch", url:d.elektro.fotoWallboxStandort},
-    {label:"Kabelweg/Durchbruch", url:d.elektro.fotoWallboxDurchbruch}
+    {label:"Wärmepumpenzähler", url:d.elektro.fotoWPZaehler}
   ]);
+  kv("Wallbox", d.elektro.wallbox);
+  await photoGrid([
+    {label:"Wallbox Typenschild", url:d.elektro.fotoWallboxTypenschild},
+    {label:"Wallbox Standortwunsch", url:d.elektro.fotoWallboxStandort}
+  ]);
+  kv("Durchbrüche notwendig", d.elektro.wallboxDurchbrueche);
+  await photoGrid([{label:"Kabelweg/Durchbruch", url:d.elektro.fotoWallboxDurchbruch}]);
+  y += 3;
 
   /* Hardware */
   const komp = Object.entries(d.elektro.komponenten||{}).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ");

@@ -1598,11 +1598,19 @@ function loadImageEl(url){
 async function normalizeImageOrientation(dataUrl){
   try{
     const img = await loadImageEl(dataUrl);
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    /* Nur die PDF-Vorschau verkleinern (spart massiv Dateigröße bei
+       E-Mail-Versand) — der Original-Upload für den anklickbaren Link
+       bleibt in voller Auflösung erhalten, siehe uploadPhotoForLink. */
+    const maxDim = 1600;
+    if(Math.max(w,h) > maxDim){
+      const scale = maxDim / Math.max(w,h);
+      w = Math.round(w*scale); h = Math.round(h*scale);
+    }
     const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
-    canvas.getContext("2d").drawImage(img, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.86);
+    canvas.width = w; canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", 0.8);
   }catch(e){
     console.warn("Bildausrichtung konnte nicht korrigiert werden", e);
     return dataUrl;
@@ -1638,7 +1646,7 @@ async function uploadPhotoForLink(dataUrl){
         if(error) throw error;
         return supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
       });
-    const timeout = new Promise(resolve=>setTimeout(()=>resolve(null), 25000));
+    const timeout = new Promise(resolve=>setTimeout(()=>resolve(null), 60000));
     return await Promise.race([uploadPromise, timeout]);
   }catch(e){
     console.warn("Foto-Upload fehlgeschlagen (keine Internetverbindung?)", e);
@@ -1684,7 +1692,7 @@ async function buildPDF(d){
       }
     }
     await Promise.all(Array.from({length: Math.min(concurrency, urls.length)}, worker));
-  })(allPhotoUrls, 4);
+  })(allPhotoUrls, 2);
   let y = 16;
 
   function col(c){ doc.setTextColor(c[0],c[1],c[2]); }

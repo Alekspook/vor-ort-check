@@ -12,6 +12,8 @@
  *     sonst kann beim Fallback der echte Name über eine blob:-URL durchsickern
  *  3) "Abschließen" verschiebt den Eintrag SOFORT nach Abgeschlossen,
  *     unabhängig davon, wie lange der PDF-Bau/Foto-Upload braucht
+ *  4) Cloud-Backup: Fotos werden als Link gesichert und kommen beim
+ *     Wiederherstellen bitgenau zurück
  *
  * Ergebnis erscheint in der Konsole. Bei einem ❌ nicht deployen.
  */
@@ -68,6 +70,20 @@ async function selftest(){
     records = records.filter(r=>r.id!==id);
     delete pdfCache[id];
   }catch(e){ check("Abschließen verschiebt sofort nach Abgeschlossen", false, e.message); }
+
+  // --- Test 4: Backup-Verpackung – Fotos kommen beim Wiederherstellen identisch zurück ---
+  try{
+    const c = document.createElement("canvas"); c.width = 40; c.height = 30;
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#" + Math.floor(Math.random()*0xffffff).toString(16).padStart(6,"0"); ctx.fillRect(0,0,40,30);
+    const img = c.toDataURL("image/jpeg", 0.9);
+    const packed = await packPhotos({ a:{ b:[img, null, "text"] } });
+    const noRaw = !JSON.stringify(packed).includes("data:image");
+    photoUrlPromises.clear();
+    const unpacked = await unpackPhotos(packed);
+    const same = unpacked.a.b[0] === img && unpacked.a.b[1] === null && unpacked.a.b[2] === "text";
+    check("Backup: Fotos werden verlinkt und kommen identisch zurück", noRaw && same,
+      !noRaw ? "Rohfoto im Backup-Datensatz gelandet" : !same ? "Foto nach Wiederherstellen nicht identisch" : "");
+  }catch(e){ check("Backup: Fotos werden verlinkt und kommen identisch zurück", false, e.message); }
 
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));

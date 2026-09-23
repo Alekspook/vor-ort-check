@@ -1646,9 +1646,10 @@ async function uploadPhotoForLink(dataUrl){
     const hash = await sha256Hex(dataUrl);
     const path = `${hash}.${ext}`;
     const blob = await (await fetch(dataUrl)).blob();
-    const uploadPromise = supabaseClient.storage.from("photos").upload(path, blob, { contentType: mime, upsert: true })
+    // Kein upsert: das bräuchte eine Lese-Regel, die das öffentliche Auflisten aller Fotos erlauben würde.
+    const uploadPromise = supabaseClient.storage.from("photos").upload(path, blob, { contentType: mime, upsert: false })
       .then(({error})=>{
-        if(error) throw error;
+        if(error && String(error.statusCode) !== "409" && !/already exists|duplicate/i.test(error.message || "")) throw error;
         return supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
       });
     const timeout = new Promise(resolve=>setTimeout(()=>resolve(null), 60000));

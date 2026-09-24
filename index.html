@@ -646,13 +646,22 @@ function fmtDateTime(ts){
    fehlgeschlagenes Speichern blieb dann unbemerkt, bis die Seite neu geladen
    wurde und den letzten *erfolgreich* gespeicherten (älteren) Stand zeigte.
    IndexedDB hat ein vielfaches an Speicherplatz und behebt das Problem an der Wurzel. */
-const RECORDS_KEY = "vorortcheck_records_v1";
+/* Aufbau: jeder Datensatz einzeln im Store "records" (Fotos darin nur als
+   Verweis {$ph: key}), jedes Foto genau einmal im Store "photos". Früher lag
+   alles als ein einziger Wert unter RECORDS_KEY und wurde bei jeder Änderung
+   komplett neu geschrieben (hunderte MB) — iOS hat das irgendwann still
+   abgebrochen, und ab da wurde nichts mehr gespeichert. */
+const RECORDS_KEY = "vorortcheck_records_v1"; // nur noch für die einmalige Übernahme
 const IDB_NAME = "vorortcheck_db";
 const IDB_STORE = "kv";
+const REC_STORE = "records";
+const PHOTO_STORE = "photos";
 let records = [];
 let currentRecordId = null;
-let screen = "home"; // 'home' | 'form' | 'drafts' | 'fertig'
+let screen = "home"; // 'home' | 'form' | 'drafts' | 'fertig' | 'backup'
 let storageOK = true;
+let storageError = null;
+let loadFailed = false;
 const pdfCache = {}; // id -> { status: 'building'|'ready'|'error', blob, filename }
 let saveTimer = null;
 let lastSavedAt = null;
@@ -662,52 +671,185 @@ function openDB(){
   if(idbOpenPromise) return idbOpenPromise;
   idbOpenPromise = new Promise((resolve, reject)=>{
     if(!window.indexedDB){ reject(new Error("IndexedDB nicht verfügbar")); return; }
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
-    req.onsuccess = ()=> resolve(req.result);
+    const req = indexedDB.open(IDB_NAME, 2);
+    req.onupgradeneeded = ()=>{
+      const db = req.result;
+      if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      if(!db.objectStoreNames.contains(REC_STORE)) db.createObjectStore(REC_STORE);
+      if(!db.objectStoreNames.contains(PHOTO_STORE)) db.createObjectStore(PHOTO_STORE);
+    };
+    req.onsuccess = ()=>{ const db = req.result; db.onversionchange = ()=> db.close(); resolve(db); };
     req.onerror = ()=> reject(req.error);
   });
+  idbOpenPromise.catch(()=>{ idbOpenPromise = null; });
   return idbOpenPromise;
 }
-function idbGet(key){
-  return openDB().then(db => new Promise((resolve, reject)=>{
-    const tx = db.transaction(IDB_STORE, "readonly");
-    const req = tx.objectStore(IDB_STORE).get(key);
-    req.onsuccess = ()=> resolve(req.result);
-    req.onerror = ()=> reject(req.error);
-  }));
-}
-function idbSet(key, value){
-  return openDB().then(db => new Promise((resolve, reject)=>{
-    const tx = db.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).put(value, key);
+// Ohne onabort bleibt ein von iOS abgebrochener Schreibvorgang (z.B. Speicher voll) für immer offen.
+function txDone(tx){
+  return new Promise((resolve, reject)=>{
     tx.oncomplete = ()=> resolve();
-    tx.onerror = ()=> reject(tx.error);
-  }));
+    tx.onerror = ()=> reject(tx.error || new Error("IndexedDB-Fehler"));
+    tx.onabort = ()=> reject(tx.error || new Error("Speichern abgebrochen (Speicher voll?)"));
+  });
+}
+function withTimeout(promise, ms, message){
+  let t;
+  return Promise.race([promise, new Promise((_, reject)=>{ t = setTimeout(()=> reject(new Error(message)), ms); })])
+    .finally(()=> clearTimeout(t));
+}
+function idbRequest(storeName, mode, fn){
+  return openDB().then(db=>{
+    const tx = db.transaction(storeName, mode);
+    const req = fn(tx.objectStore(storeName));
+    return txDone(tx).then(()=> req && req.result);
+  });
+}
+function idbGet(key){ return idbRequest(IDB_STORE, "readonly", s=> s.get(key)); }
+function idbSet(key, value){ return idbRequest(IDB_STORE, "readwrite", s=>{ s.put(value, key); }); }
+function idbDel(key){ return idbRequest(IDB_STORE, "readwrite", s=>{ s.delete(key); }); }
+
+const photoKeys = new Map();      // dataUrl -> Schlüssel (= Dateiname im Supabase-Bucket)
+const storedPhotos = new Set();   // Schlüssel, die schon im Store "photos" liegen
+const persistedSig = new Map();   // Datensatz-id -> zuletzt geschriebener Stand
+async function photoKeyFor(dataUrl){
+  let key = photoKeys.get(dataUrl);
+  if(!key){
+    const mime = (dataUrl.match(/^data:([^;]+);/)||[])[1] || "";
+    key = (await sha256Hex(dataUrl)) + (mime.indexOf("png")!==-1 ? ".png" : ".jpg");
+    photoKeys.set(dataUrl, key);
+  }
+  return key;
+}
+async function packForDB(obj, newPhotos){
+  if(typeof obj === "string" && obj.indexOf("data:image") === 0){
+    const key = await photoKeyFor(obj);
+    if(!storedPhotos.has(key)) newPhotos.set(key, obj);
+    return { $ph: key };
+  }
+  if(Array.isArray(obj)){ const out = []; for(const v of obj) out.push(await packForDB(v, newPhotos)); return out; }
+  if(obj && typeof obj === "object"){ const out = {}; for(const k of Object.keys(obj)) out[k] = await packForDB(obj[k], newPhotos); return out; }
+  return obj;
+}
+function collectPhotoKeys(obj, out){
+  if(obj && typeof obj === "object"){
+    if(!Array.isArray(obj) && typeof obj.$ph === "string"){ out.add(obj.$ph); return out; }
+    Object.values(obj).forEach(v=> collectPhotoKeys(v, out));
+  }
+  return out;
+}
+function unpackFromDB(obj, photos){
+  if(obj && typeof obj === "object"){
+    if(!Array.isArray(obj) && typeof obj.$ph === "string") return photos.get(obj.$ph) || null;
+    if(Array.isArray(obj)) return obj.map(v=> unpackFromDB(v, photos));
+    const out = {}; for(const k of Object.keys(obj)) out[k] = unpackFromDB(obj[k], photos); return out;
+  }
+  return obj;
+}
+function recordSig(r){ return `${r.updatedAt}|${r.status}|${r.backedUpAt||""}`; }
+
+async function loadPhotos(keys){
+  const photos = new Map();
+  const db = await openDB();
+  const tx = db.transaction(PHOTO_STORE, "readonly");
+  const store = tx.objectStore(PHOTO_STORE);
+  keys.forEach(key=>{ const req = store.get(key); req.onsuccess = ()=>{ if(req.result) photos.set(key, req.result); }; });
+  await txDone(tx);
+  for(const key of keys){
+    if(photos.has(key)) continue;
+    // Lokal fehlend: gleiches Foto liegt unter demselben Namen ggf. im Supabase-Bucket.
+    try{
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/public/photos/${key}`);
+      if(res.ok){ photos.set(key, await blobToDataUrl(await res.blob())); continue; }
+    }catch(e){}
+    console.warn("Foto fehlt lokal und in der Cloud:", key);
+  }
+  photos.forEach((dataUrl, key)=>{ photoKeys.set(dataUrl, key); storedPhotos.add(key); });
+  return photos;
 }
 async function loadRecords(){
-  try{
-    const fromIDB = await idbGet(RECORDS_KEY);
-    if(fromIDB) return fromIDB;
-  }catch(e){ console.warn("IndexedDB-Lesefehler", e); }
-  // Einmalige Übernahme von Datensätzen aus einer älteren Version (localStorage).
-  try{
-    const legacy = JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
-    if(legacy.length){ try{ await idbSet(RECORDS_KEY, legacy); }catch(e){} }
-    return legacy;
-  }catch(e){ return []; }
+  const rows = await idbRequest(REC_STORE, "readonly", s=> s.getAll());
+  if(!rows || !rows.length) return await migrateLegacyRecords();
+  const keys = new Set();
+  rows.forEach(row=> collectPhotoKeys(row.data, keys));
+  const photos = await loadPhotos(keys);
+  const out = rows.map(row=>{
+    const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: unpackFromDB(row.data, photos) };
+    if(row.backedUpAt) r.backedUpAt = row.backedUpAt;
+    persistedSig.set(r.id, recordSig(r));
+    return r;
+  });
+  out.sort((a,b)=> b.updatedAt - a.updatedAt);
+  cleanupUnusedPhotos(keys).catch(e=> console.warn("Aufräumen der Fotos fehlgeschlagen", e));
+  return out;
 }
-async function saveRecords(){
+async function migrateLegacyRecords(){
+  let legacy = null;
+  try{ legacy = await idbGet(RECORDS_KEY); }catch(e){ console.warn("IndexedDB-Lesefehler", e); }
+  if(!legacy){ try{ legacy = JSON.parse(localStorage.getItem(RECORDS_KEY) || "null"); }catch(e){} }
+  if(!legacy || !legacy.length) return [];
+  records = legacy;
+  // Alten Gesamtwert erst löschen, wenn alles im neuen Aufbau sicher gespeichert ist.
+  if(await saveRecords()){
+    try{ await idbDel(RECORDS_KEY); }catch(e){}
+    try{ localStorage.removeItem(RECORDS_KEY); }catch(e){}
+  }
+  return legacy;
+}
+async function cleanupUnusedPhotos(usedKeys){
+  const allKeys = await idbRequest(PHOTO_STORE, "readonly", s=> s.getAllKeys());
+  const unused = (allKeys || []).filter(k=> !usedKeys.has(k));
+  if(!unused.length) return;
+  await idbRequest(PHOTO_STORE, "readwrite", s=>{ unused.forEach(k=> s.delete(k)); });
+  unused.forEach(k=> storedPhotos.delete(k));
+}
+
+let saveChain = Promise.resolve();
+function saveRecords(){
+  const run = saveChain.then(writeChangedRecords);
+  saveChain = run.catch(()=>{});
+  return run;
+}
+async function writeChangedRecords(){
+  const wasOK = storageOK;
   try{
-    await idbSet(RECORDS_KEY, records);
+    const db = await withTimeout(openDB(), 15000, "Datenbank lässt sich nicht öffnen");
+    const ids = new Set(records.map(r=> r.id));
+    const dirty = records.filter(r=> r.id === currentRecordId || persistedSig.get(r.id) !== recordSig(r));
+    const removed = [...persistedSig.keys()].filter(id=> !ids.has(id));
+    const newPhotos = new Map();
+    const rows = [];
+    for(const r of dirty){
+      rows.push({ sig: recordSig(r), row: { id: r.id, status: r.status, updatedAt: r.updatedAt, backedUpAt: r.backedUpAt || null, data: await packForDB(r.data, newPhotos) } });
+    }
+    for(const [key, dataUrl] of newPhotos){
+      const tx = db.transaction(PHOTO_STORE, "readwrite");
+      tx.objectStore(PHOTO_STORE).put(dataUrl, key);
+      await withTimeout(txDone(tx), 30000, "Foto speichern dauert zu lange");
+      storedPhotos.add(key);
+    }
+    if(rows.length || removed.length){
+      const tx = db.transaction(REC_STORE, "readwrite");
+      const store = tx.objectStore(REC_STORE);
+      rows.forEach(x=> store.put(x.row, x.row.id));
+      removed.forEach(id=> store.delete(id));
+      await withTimeout(txDone(tx), 20000, "Speichern dauert zu lange");
+      rows.forEach(x=> persistedSig.set(x.row.id, x.sig));
+      removed.forEach(id=> persistedSig.delete(id));
+    }
     lastSavedAt = Date.now();
     storageOK = true;
+    storageError = null;
   }catch(e){
     console.error("Speichern fehlgeschlagen", e);
     storageOK = false;
+    storageError = (e && e.message) || String(e);
   }
   updateSaveIndicator();
+  if(wasOK && !storageOK){
+    safeAlert("ACHTUNG: Die App kann gerade nicht speichern (" + storageError + ").\n\nDie App NICHT schließen — sonst gehen die letzten Eingaben verloren. Bitte sofort Bescheid geben.");
+  }
   scheduleBackup();
+  return storageOK;
 }
 function scheduleAutosave(){
   delete pdfCache["current"];
@@ -730,7 +872,7 @@ function updateSaveIndicator(){
   const el = document.getElementById("saveIndicator");
   if(!el) return;
   if(!storageOK){
-    el.textContent = "⚠ Speichern fehlgeschlagen — App geöffnet lassen und nicht schließen, bis das Problem behoben ist!";
+    el.textContent = "⚠ NICHT GESPEICHERT — App geöffnet lassen und nicht schließen!" + (storageError ? " (" + storageError + ")" : "");
     el.classList.add("save-indicator-error");
     return;
   }
@@ -1650,9 +1792,7 @@ async function uploadPhotoForLink(dataUrl){
   if(!supabaseClient) return null;
   try{
     const mime = (dataUrl.match(/^data:([^;]+);/)||[])[1] || "image/jpeg";
-    const ext = mime.indexOf("png")!==-1 ? "png" : "jpg";
-    const hash = await sha256Hex(dataUrl);
-    const path = `${hash}.${ext}`;
+    const path = await photoKeyFor(dataUrl);
     const publicUrl = supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
     try{
       const head = await fetch(publicUrl + "?check=" + Date.now(), { method: "HEAD", cache: "no-store" });
@@ -1764,7 +1904,7 @@ async function runBackup(){
       if(records.includes(rec)){ rec.backedUpAt = stamp; changed = true; }
       else queueBackupDelete(rec.id);
     }
-    if(changed) await idbSet(RECORDS_KEY, records);
+    if(changed) await saveRecords();
     backupLastOk = Date.now();
     backupLastError = null;
   }catch(e){
@@ -1778,6 +1918,7 @@ async function runBackup(){
 }
 async function restoreFromBackup(){
   if(!backupUser || backupBusy) return;
+  if(loadFailed){ backupMessage = "Die Daten auf diesem Gerät konnten beim Start nicht geladen werden. Bitte die App erst komplett schließen und neu öffnen, dann erneut versuchen."; render(); return; }
   backupBusy = true; backupMessage = ""; backupRestoreProgress = "Lade Liste…"; render();
   try{
     const { data: rows, error } = await supabaseClient.from("backups").select("id,status,updated_at,data").eq("owner", backupUser.id);
@@ -1788,7 +1929,7 @@ async function restoreFromBackup(){
       backupRestoreProgress = `Stelle wieder her… ${done+1} von ${missing.length}`; render();
       const data = await unpackPhotos(row.data);
       records.push({ id: row.id, status: row.status, updatedAt: row.updated_at, backedUpAt: row.updated_at, data });
-      await idbSet(RECORDS_KEY, records);
+      await saveRecords();
       done++;
     }
     backupMessage = missing.length
@@ -2359,7 +2500,8 @@ async function finishRecord(){
   const finishedId = currentRecordId;
   const rec = records.find(r=>r.id===currentRecordId);
   if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); }
-  await saveRecords();
+  const saved = await saveRecords();
+  if(!saved) safeAlert("ACHTUNG: Der Vor-Ort-Check ist abgeschlossen, konnte aber NICHT gespeichert werden (" + storageError + ").\n\nApp nicht schließen, Protokoll jetzt herunterladen und Bescheid geben.");
   screen = "fertig"; S = null; currentRecordId = null;
   render();
   preparePDF(finishedId, finishedData);
@@ -2367,7 +2509,15 @@ async function finishRecord(){
 
 /* ---------- Boot ---------- */
 (async function boot(){
-  records = await loadRecords();
+  try{
+    records = await loadRecords();
+  }catch(e){
+    console.error("Laden fehlgeschlagen", e);
+    storageOK = false;
+    loadFailed = true;
+    storageError = "Laden fehlgeschlagen: " + ((e && e.message) || e);
+    safeAlert("ACHTUNG: Die gespeicherten Vor-Ort-Checks konnten nicht geladen werden (" + storageError + ").\n\nBitte die App einmal komplett schließen und neu öffnen. Wenn das nicht hilft: Cloud-Backup → Aus Backup wiederherstellen.");
+  }
   try{ pendingDeletes = (await idbGet(PENDING_DELETES_KEY)) || []; }catch(e){ pendingDeletes = []; }
   screen = "home";
   render();

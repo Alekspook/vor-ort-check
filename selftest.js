@@ -14,6 +14,8 @@
  *     unabhängig davon, wie lange der PDF-Bau/Foto-Upload braucht
  *  4) Cloud-Backup: Fotos werden als Link gesichert und kommen beim
  *     Wiederherstellen bitgenau zurück
+ *  5) Ein von iOS abgebrochener Speichervorgang wird erkannt und gemeldet,
+ *     statt still zu hängen (so gingen bei Carolin Day die Eingaben verloren)
  *
  * Ergebnis erscheint in der Konsole. Bei einem ❌ nicht deployen.
  */
@@ -84,6 +86,28 @@ async function selftest(){
     check("Backup: Fotos werden verlinkt und kommen identisch zurück", noRaw && same,
       !noRaw ? "Rohfoto im Backup-Datensatz gelandet" : !same ? "Foto nach Wiederherstellen nicht identisch" : "");
   }catch(e){ check("Backup: Fotos werden verlinkt und kommen identisch zurück", false, e.message); }
+
+  // --- Test 5: Speichern – Abbruch durch iOS wird erkannt statt still zu hängen ---
+  try{
+    const realAlert = window.alert, realTx = IDBDatabase.prototype.transaction;
+    window.alert = ()=>{};
+    const tmp = { id: "__selftest_save", status: "draft", updatedAt: Date.now(), data: freshState() };
+    records.push(tmp);
+    IDBDatabase.prototype.transaction = function(names, mode){
+      const tx = realTx.apply(this, arguments);
+      if(mode === "readwrite") setTimeout(()=>{ try{ tx.abort(); }catch(e){} }, 0);
+      return tx;
+    };
+    const okDuringAbort = await withTimeout(saveRecords(), 40000, "saveRecords hängt");
+    IDBDatabase.prototype.transaction = realTx;
+    const okAfter = await saveRecords();
+    const row = await idbRequest(REC_STORE, "readonly", s=> s.get(tmp.id));
+    records = records.filter(r=> r !== tmp);
+    await saveRecords();
+    window.alert = realAlert;
+    check("Speichern: Abbruch wird erkannt, danach wird wieder gespeichert", okDuringAbort === false && okAfter === true && !!row,
+      okDuringAbort !== false ? "Abbruch wurde NICHT erkannt" : !okAfter || !row ? "Nach dem Abbruch wird nicht wieder gespeichert" : "");
+  }catch(e){ check("Speichern: Abbruch wird erkannt, danach wird wieder gespeichert", false, e.message); }
 
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));

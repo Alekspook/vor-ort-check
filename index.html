@@ -1740,7 +1740,10 @@ function formatDateDE(iso){
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
 function pdfFilename(d){
-  return `Bestandsaufnahme_${(d.kunde.nachname||"Protokoll").replace(/[^a-zA-Z0-9_-]/g,"")}_${d.grunddaten.besichtigtAm}.pdf`;
+  const name = [d.kunde.vorname, d.kunde.nachname].filter(Boolean).join(" ")
+    .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue").replace(/ß/g,"ss")
+    .replace(/[^a-zA-Z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+  return `${name || "Kunde"}-PV-Check.pdf`;
 }
 function loadImageEl(url){
   return new Promise((resolve, reject)=>{

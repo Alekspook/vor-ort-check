@@ -109,6 +109,37 @@ async function selftest(){
       okDuringAbort !== false ? "Abbruch wurde NICHT erkannt" : !okAfter || !row ? "Nach dem Abbruch wird nicht wieder gespeichert" : "");
   }catch(e){ check("Speichern: Abbruch wird erkannt, danach wird wieder gespeichert", false, e.message); }
 
+  // --- Test 6: "Alle Fotos aufs Handy" – jedes Foto kommt mit, als echte Dateien ---
+  try{
+    const d = freshState();
+    d.kunde.vorname = "Jörg"; d.kunde.nachname = "Müller";
+    const slots = [];
+    const put = (obj, key)=>{ obj[key] = testImg; slots.push(1); };
+    [0,1,2,3,4].forEach(k=> put(d.daecher[0].fotos, k));
+    [0,1,2].forEach(k=> put(d.daecher[0].drohnenFotos, k));
+    [0,1].forEach(k=> put(d.daecher[0].dcFotos, k));
+    [0,1,2].forEach(k=> put(d.daecher[0].wanddurchbruecheFotos, k));
+    Object.keys(d.elektro.zaehler).filter(k=> d.elektro.zaehler[k] === null).forEach(k=> put(d.elektro.zaehler, k));
+    Object.keys(d.elektro.hausanschluss).filter(k=> d.elektro.hausanschluss[k] === null).forEach(k=> put(d.elektro.hausanschluss, k));
+    Object.keys(d.elektro).filter(k=> d.elektro[k] === null).forEach(k=> put(d.elektro, k));
+    d.zusatzbilder = [testImg, testImg]; slots.push(1, 1);
+    const list = recordPhotoList(d);
+    const unlabeled = list.filter(p=> p.label === "Foto").length;
+    const realShare = navigator.share, realCanShare = navigator.canShare;
+    let shared = null;
+    navigator.canShare = ()=> true;
+    navigator.share = async (opts)=>{ shared = opts; };
+    const realS = S; S = d;
+    downloadAllPhotos("current");
+    S = realS;
+    await new Promise(r=> setTimeout(r, 50));
+    navigator.share = realShare; navigator.canShare = realCanShare;
+    const files = shared && shared.files || [];
+    const namesOk = files.length && files.every(f=> /^Joerg-Mueller-\d\d-[A-Za-z0-9-]+\.(jpg|png)$/.test(f.name) && f.size > 0);
+    check("Alle Fotos: jedes Foto als Datei im Teilen-Menü", list.length === slots.length && unlabeled === 0 && files.length === slots.length && namesOk && !("url" in shared),
+      list.length !== slots.length ? `${list.length} von ${slots.length} Fotos erfasst` : unlabeled ? `${unlabeled} Foto(s) ohne Bezeichnung` : !namesOk ? "Dateinamen/Dateien fehlerhaft" : "");
+  }catch(e){ check("Alle Fotos: jedes Foto als Datei im Teilen-Menü", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

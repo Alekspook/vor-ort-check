@@ -927,7 +927,8 @@ function goHome(){
   render();
 }
 function goScreen(s){ screen = s; render(); }
-function showConfirm(message, onConfirm, okLabel){
+function showConfirm(message, onConfirm, okLabel, okColor){
+  const okBg = okColor || "var(--red)";
   const old = document.getElementById("confirmOverlay");
   if(old) old.remove();
   const overlay = document.createElement("div");
@@ -938,7 +939,7 @@ function showConfirm(message, onConfirm, okLabel){
       <div style="font-size:14.5px;color:var(--ink);margin-bottom:18px;line-height:1.4;">${message}</div>
       <div style="display:flex;gap:10px;">
         <button id="confirmCancelBtn" style="flex:1;padding:11px;border-radius:var(--radius-sm);border:1px solid var(--line);background:#fff;color:var(--ink);font-weight:700;font-size:14px;cursor:pointer;">Abbrechen</button>
-        <button id="confirmOkBtn" style="flex:1;padding:11px;border-radius:var(--radius-sm);border:1px solid var(--red);background:var(--red);color:#fff;font-weight:700;font-size:14px;cursor:pointer;">${okLabel || "Löschen"}</button>
+        <button id="confirmOkBtn" style="flex:1;padding:11px;border-radius:var(--radius-sm);border:1px solid ${okBg};background:${okBg};color:#fff;font-weight:700;font-size:14px;cursor:pointer;">${okLabel || "Löschen"}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -1039,6 +1040,7 @@ function renderFormScreen(){
       <div class="error-banner" id="errorBanner" style="display:none;"></div>
       ${menuOpen ? `
         <div class="menu-pop">
+          <button onclick="downloadAllPhotos('current')">Alle Fotos aufs Handy laden</button>
           <button class="danger" onclick="menuDeleteCurrent()">Diese Bestandsaufnahme löschen</button>
         </div>` : ""}
     </header>
@@ -1085,6 +1087,7 @@ function renderList(status){
             <div class="list-row-sub">${escapeHtml([r.data.standort.strasse,r.data.standort.ort].filter(Boolean).join(", ")) || "—"} · ${fmtDateTime(r.updatedAt)}</div>
           </div>
           <div class="list-row-actions">
+            ${status==="fertig" ? `<button title="Alle Fotos aufs Handy laden" aria-label="Alle Fotos aufs Handy laden" onclick="event.stopPropagation(); downloadAllPhotos('${r.id}')">${icon("image",18)}</button>` : ""}
             ${status==="fertig" ? (()=>{
               const entry = pdfCache[r.id];
               if(entry && entry.status==="building") return `<button class="building" title="PDF wird erstellt…" disabled><span class="spinner-sm"></span></button>`;
@@ -1739,11 +1742,110 @@ function formatDateDE(iso){
   if(parts.length!==3) return iso;
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
 }
-function pdfFilename(d){
-  const name = [d.kunde.vorname, d.kunde.nachname].filter(Boolean).join(" ")
+function fileSafe(s){
+  return String(s || "")
     .replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/Ä/g,"Ae").replace(/Ö/g,"Oe").replace(/Ü/g,"Ue").replace(/ß/g,"ss")
     .replace(/[^a-zA-Z0-9]+/g,"-").replace(/^-+|-+$/g,"");
-  return `${name || "Kunde"}-PV-Check.pdf`;
+}
+function customerFileBase(d){
+  return fileSafe([d.kunde.vorname, d.kunde.nachname].filter(Boolean).join(" ")) || "Kunde";
+}
+function pdfFilename(d){
+  return `${customerFileBase(d)}-PV-Check.pdf`;
+}
+
+/* ---------- Alle Fotos eines Vor-Ort-Checks aufs Handy ---------- */
+function isPhoto(v){ return typeof v === "string" && v.indexOf("data:image") === 0; }
+function allPhotosIn(obj, out){
+  if(isPhoto(obj)) out.push(obj);
+  else if(obj && typeof obj === "object") Object.values(obj).forEach(v=> allPhotosIn(v, out));
+  return out;
+}
+function recordPhotoList(d){
+  const list = [];
+  const add = (label, url)=>{ if(isPhoto(url)) list.push({ label, url }); };
+  d.daecher.forEach((r, i)=>{
+    const p = d.daecher.length > 1 ? `Dach ${i+1} ` : "";
+    (r.fotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+1}`, u));
+    (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));
+    (r.dcFotos||[]).forEach((u,k)=> add(`${p}Kabelweg ${k+1}`, u));
+    (r.wanddurchbruecheFotos||[]).forEach((u,k)=> add(`${p}Wanddurchbruch ${k+1}`, u));
+  });
+  const e = d.elektro, z = e.zaehler, h = e.hausanschluss;
+  add("Zählerschrank Übersicht", z.uebersicht);
+  add("Zählerschrank ohne Abdeckungen", z.ohneAbdeckungen);
+  add("Zählerschrank Typenschild", z.typenschild);
+  add("Vorsicherung SLS", z.vorsicherung);
+  add("Anschlussbereich", z.anschlussbereich);
+  add("Verteilerfeld 1", z.verteilerfeld1);
+  add("Verteilerfeld 2", z.verteilerfeld2);
+  add("Weitere Unterverteilung", z.weitereUVFoto);
+  add("Neue Unterverteilung", z.neueUVFoto);
+  add("Zählerschrank Wanddurchbruch 1", z.wanddurchbruecheFoto1);
+  add("Zählerschrank Wanddurchbruch 2", z.wanddurchbruecheFoto2);
+  add("Hausanschluss", h.foto);
+  add("Potenzialausgleichsschiene", h.potenzialausgleichFoto);
+  add("Fundamenterder", h.fundamenterderFoto);
+  add("Wärmepumpe Typenschild", e.fotoWPTypenschild);
+  add("Wärmepumpenzähler", e.fotoWPZaehler);
+  add("Wallbox Typenschild", e.fotoWallboxTypenschild);
+  add("Wallbox Standortwunsch", e.fotoWallboxStandort);
+  add("Wallbox Kabelweg Durchbruch", e.fotoWallboxDurchbruch);
+  add("Montageort Wechselrichter", e.fotoWechselrichter);
+  add("Montageort Batteriespeicher", e.fotoSpeicher);
+  (d.zusatzbilder||[]).forEach((u,k)=> add(`Weiteres Bild ${k+1}`, u));
+  // Sicherheitsnetz: Fotos aus Feldern, die oben (noch) nicht aufgeführt sind, nie verschlucken.
+  const listed = new Set(list.map(p=> p.url));
+  allPhotosIn(d, []).forEach(u=>{ if(!listed.has(u)){ listed.add(u); list.push({ label: "Foto", url: u }); } });
+  return list;
+}
+function dataUrlToFile(dataUrl, name){
+  const comma = dataUrl.indexOf(",");
+  const mime = (dataUrl.slice(0, comma).match(/^data:([^;]+)/)||[])[1] || "image/jpeg";
+  const b64 = dataUrl.slice(comma + 1);
+  let bytes;
+  if(typeof Uint8Array.fromBase64 === "function"){
+    bytes = Uint8Array.fromBase64(b64);
+  }else{
+    const bin = atob(b64);
+    bytes = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  }
+  return new File([bytes], name, { type: mime });
+}
+// Synchron bis navigator.share(): iOS erlaubt das Teilen nur direkt nach dem Tap.
+function downloadAllPhotos(id){
+  menuOpen = false;
+  const data = id === "current" ? S : (records.find(r=> r.id === id) || {}).data;
+  if(!data) return;
+  const photos = recordPhotoList(data);
+  if(!photos.length){ safeAlert("Bei diesem Vor-Ort-Check sind keine Fotos vorhanden."); render(); return; }
+  const base = customerFileBase(data);
+  const files = photos.map((p, i)=>{
+    const ext = p.url.indexOf("data:image/png") === 0 ? "png" : "jpg";
+    return dataUrlToFile(p.url, `${base}-${String(i+1).padStart(2,"0")}-${fileSafe(p.label)}.${ext}`);
+  });
+  if(navigator.canShare && navigator.canShare({ files })){
+    navigator.share({ files }).catch(e=>{
+      if(e && e.name === "AbortError") return;
+      if(e && e.name === "NotAllowedError"){
+        showConfirm(`${files.length} Fotos sind bereit.`, ()=> navigator.share({ files }).catch(err=>{
+          if(err && err.name !== "AbortError") safeAlert("Fotos konnten nicht geteilt werden: " + err.message);
+        }), "Fotos teilen", "var(--green)");
+        return;
+      }
+      console.warn(e); safeAlert("Fotos konnten nicht geteilt werden: " + e.message);
+    });
+  }else{
+    files.forEach((f, i)=> setTimeout(()=>{
+      const url = URL.createObjectURL(f);
+      const a = document.createElement("a");
+      a.href = url; a.download = f.name; a.style.display = "none";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(url), 60000);
+    }, i * 400));
+  }
+  render();
 }
 function loadImageEl(url){
   return new Promise((resolve, reject)=>{

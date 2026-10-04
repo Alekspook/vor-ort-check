@@ -1799,7 +1799,36 @@ function recordPhotoList(d){
   allPhotosIn(d, []).forEach(u=>{ if(!listed.has(u)){ listed.add(u); list.push({ label: "Foto", url: u }); } });
   return list;
 }
-function dataUrlToFile(dataUrl, name){
+/* Überschreibt Aufnahmedaten in den EXIF/XMP-Segmenten eines JPEGs an Ort und Stelle
+   (gleiche Länge, Struktur bleibt gültig). Die Fotos-App sortiert nach diesem Datum. */
+function rewriteJpegDates(bytes, when){
+  if(bytes[0] !== 0xFF || bytes[1] !== 0xD8) return;
+  const pad = n=> String(n).padStart(2, "0");
+  const ymd = [when.getFullYear(), pad(when.getMonth()+1), pad(when.getDate())];
+  const hms = [pad(when.getHours()), pad(when.getMinutes()), pad(when.getSeconds())].join(":");
+  const exifDate = Array.from(`${ymd.join(":")} ${hms}`, c=> c.charCodeAt(0));
+  const isoDate = Array.from(`${ymd.join("-")}T${hms}`, c=> c.charCodeAt(0));
+  const digit = c=> c >= 48 && c <= 57;
+  function matches(b, i, sepDate, sepMid){
+    for(const k of [0,1,2,3,5,6,8,9,11,12,14,15,17,18]) if(!digit(b[i+k])) return false;
+    return b[i+4] === sepDate && b[i+7] === sepDate && b[i+10] === sepMid && b[i+13] === 58 && b[i+16] === 58;
+  }
+  let p = 2;
+  while(p + 4 <= bytes.length && bytes[p] === 0xFF){
+    const marker = bytes[p+1];
+    if(marker === 0xDA || marker === 0xD9) break;
+    const len = (bytes[p+2] << 8) | bytes[p+3];
+    if(marker === 0xE1){
+      const end = Math.min(p + 2 + len, bytes.length);
+      for(let i = p + 4; i + 19 <= end; i++){
+        if(matches(bytes, i, 58, 32)){ bytes.set(exifDate, i); i += 18; }
+        else if(matches(bytes, i, 45, 84)){ bytes.set(isoDate, i); i += 18; }
+      }
+    }
+    p += 2 + len;
+  }
+}
+function dataUrlToFile(dataUrl, name, when){
   const comma = dataUrl.indexOf(",");
   const mime = (dataUrl.slice(0, comma).match(/^data:([^;]+)/)||[])[1] || "image/jpeg";
   const b64 = dataUrl.slice(comma + 1);
@@ -1811,6 +1840,7 @@ function dataUrlToFile(dataUrl, name){
     bytes = new Uint8Array(bin.length);
     for(let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   }
+  if(when && mime === "image/jpeg") rewriteJpegDates(bytes, when);
   return new File([bytes], name, { type: mime });
 }
 // Synchron bis navigator.share(): iOS erlaubt das Teilen nur direkt nach dem Tap.
@@ -1821,9 +1851,11 @@ function downloadAllPhotos(id){
   const photos = recordPhotoList(data);
   if(!photos.length){ safeAlert("Bei diesem Vor-Ort-Check sind keine Fotos vorhanden."); render(); return; }
   const base = customerFileBase(data);
+  // Fotos mit eigenem Aufnahmedatum (z.B. Drohne) knapp vor "jetzt" legen: alle landen zusammen bei den neuesten, in App-Reihenfolge.
+  const now = Date.now();
   const files = photos.map((p, i)=>{
     const ext = p.url.indexOf("data:image/png") === 0 ? "png" : "jpg";
-    return dataUrlToFile(p.url, `${base}-${String(i+1).padStart(2,"0")}-${fileSafe(p.label)}.${ext}`);
+    return dataUrlToFile(p.url, `${base}-${String(i+1).padStart(2,"0")}-${fileSafe(p.label)}.${ext}`, new Date(now - (photos.length - i) * 1000));
   });
   if(navigator.canShare && navigator.canShare({ files })){
     navigator.share({ files }).catch(e=>{

@@ -140,6 +140,19 @@ async function selftest(){
       list.length !== slots.length ? `${list.length} von ${slots.length} Fotos erfasst` : unlabeled ? `${unlabeled} Foto(s) ohne Bezeichnung` : !namesOk ? "Dateinamen/Dateien fehlerhaft" : "");
   }catch(e){ check("Alle Fotos: jedes Foto als Datei im Teilen-Menü", false, e.message); }
 
+  // --- Test 7: Aufnahmedatum der Foto-Kopien wird auf "jetzt" gesetzt (Sortierung in der Fotos-App) ---
+  try{
+    const enc = s=> Array.from(s, c=> c.charCodeAt(0));
+    const payload = [...enc("Exif\0\0"), ...enc("2020:01:02 03:04:05"), 0, ...enc("<x>2020-01-02T03:04:05</x>")];
+    const len = payload.length + 2;
+    const jpeg = new Uint8Array([0xFF,0xD8, 0xFF,0xE1, len >> 8, len & 255, ...payload, 0xFF,0xDA, 0,2, 0x12,0x34, 0xFF,0xD9]);
+    let b64 = ""; jpeg.forEach(b=> b64 += String.fromCharCode(b));
+    const file = dataUrlToFile("data:image/jpeg;base64," + btoa(b64), "t.jpg", new Date(2031, 4, 6, 7, 8, 9));
+    const out = new TextDecoder("latin1").decode(new Uint8Array(await file.arrayBuffer()));
+    const ok = out.includes("2031:05:06 07:08:09") && out.includes("2031-05-06T07:08:09") && !out.includes("2020") && file.size === jpeg.length;
+    check("Alle Fotos: Aufnahmedatum der Kopien wird auf jetzt gesetzt", ok, ok ? "" : "Datum nicht ersetzt oder Datei verändert");
+  }catch(e){ check("Alle Fotos: Aufnahmedatum der Kopien wird auf jetzt gesetzt", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

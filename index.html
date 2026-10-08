@@ -770,7 +770,7 @@ function unpackFromDB(obj, photos){
   }
   return obj;
 }
-function recordSig(r){ return `${r.updatedAt}|${r.status}|${r.backedUpAt||""}`; }
+function recordSig(r){ return `${r.updatedAt}|${r.status}|${r.backedUpAt||""}|${r.pdfExportedAt}`; }
 
 async function loadPhotos(keys){
   const photos = new Map();
@@ -800,6 +800,7 @@ async function loadRecords(){
   const out = rows.map(row=>{
     const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: unpackFromDB(row.data, photos) };
     if(row.backedUpAt) r.backedUpAt = row.backedUpAt;
+    if(row.pdfExportedAt !== undefined) r.pdfExportedAt = row.pdfExportedAt;
     persistedSig.set(r.id, recordSig(r));
     return r;
   });
@@ -844,7 +845,7 @@ async function writeChangedRecords(){
     const newPhotos = new Map();
     const rows = [];
     for(const r of dirty){
-      rows.push({ sig: recordSig(r), row: { id: r.id, status: r.status, updatedAt: r.updatedAt, backedUpAt: r.backedUpAt || null, data: await packForDB(r.data, newPhotos) } });
+      rows.push({ sig: recordSig(r), row: { id: r.id, status: r.status, updatedAt: r.updatedAt, backedUpAt: r.backedUpAt || null, pdfExportedAt: r.pdfExportedAt, data: await packForDB(r.data, newPhotos) } });
     }
     for(const [key, dataUrl] of newPhotos){
       const tx = db.transaction(PHOTO_STORE, "readwrite");
@@ -1058,7 +1059,46 @@ async function preparePDF(id, data){
 function sharePDF(id){
   const entry = pdfCache[id];
   if(!entry || entry.status !== "ready") return;
-  triggerDownload(entry.blob, entry.filename);
+  triggerDownload(entry.blob, entry.filename).then(ok=>{ if(ok) markPdfExported(id); });
+}
+function markPdfExported(id){
+  const rec = records.find(r=> r.id === (id === "current" ? currentRecordId : id));
+  if(!rec) return;
+  rec.pdfExportedAt = Date.now();
+  saveRecords();
+  enforceFinishedLimit();
+}
+
+/* Nur die letzten MAX_FINISHED abgeschlossenen Checks bleiben in der App. Gelöscht wird
+   nur, was schon als PDF geteilt/gesichert wurde: pdfExportedAt === null heißt
+   "abgeschlossen, PDF noch nie gesichert" und schützt den Eintrag. Einträge von vor
+   dieser Regel haben das Feld gar nicht (undefined) und gelten als gesichert. */
+const MAX_FINISHED = 15;
+function enforceFinishedLimit(){
+  if(loadFailed) return 0;
+  const finished = records.filter(r=> r.status === "fertig").sort((a,b)=> b.updatedAt - a.updatedAt);
+  const excess = finished.slice(MAX_FINISHED).filter(r=> r.pdfExportedAt !== null && r.id !== currentRecordId);
+  if(!excess.length) return 0;
+  const ids = new Set(excess.map(r=> r.id));
+  records = records.filter(r=> !ids.has(r.id));
+  excess.forEach(r=>{ queueBackupDelete(r.id); delete pdfCache[r.id]; });
+  saveRecords();
+  showToast(excess.length === 1
+    ? `Ältester abgeschlossener Vor-Ort-Check aus der App entfernt (es bleiben die letzten ${MAX_FINISHED}).`
+    : `${excess.length} ältere abgeschlossene Vor-Ort-Checks aus der App entfernt (es bleiben die letzten ${MAX_FINISHED}).`);
+  if(screen === "fertig") render();
+  return excess.length;
+}
+function showToast(message){
+  const old = document.getElementById("toast");
+  if(old) old.remove();
+  const el = document.createElement("div");
+  el.id = "toast";
+  el.setAttribute("role", "status");
+  el.textContent = message;
+  el.style.cssText = "position:fixed;left:14px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:250;background:var(--ink);color:#fff;padding:12px 14px;border-radius:var(--radius);font-size:13px;line-height:1.4;box-shadow:0 6px 18px rgba(22,58,87,.3);";
+  document.body.appendChild(el);
+  setTimeout(()=> el.remove(), 5000);
 }
 function menuDownloadPDF(){
   preparePDF("current", S);
@@ -1165,6 +1205,7 @@ function renderList(status){
       </div>
     </header>
     <main style="padding:14px 14px 30px;">
+      ${status === "fertig" ? `<div class="note" style="margin:0 2px 10px;">Es bleiben die letzten ${MAX_FINISHED} abgeschlossenen Vor-Ort-Checks in der App. Ältere werden automatisch entfernt, sobald ihr PDF gesichert ist.</div>` : ""}
       ${items.length > 5 ? `<input type="search" class="list-search" id="listSearch" placeholder="Kunde, Straße oder Ort suchen" value="${escapeAttr(listQuery)}" oninput="filterList(this.value)">` : ""}
       ${items.length===0 ? `<div class="note">Noch nichts hier.</div>` : items.map(r=>`
         <div class="list-row" data-search="${escapeAttr(listSearchText(r))}" ${needle && !listSearchText(r).includes(needle) ? "hidden" : ""}>
@@ -2698,10 +2739,10 @@ async function triggerDownload(blob, filename){
     const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       await navigator.share({ files: [file] });
-      return;
+      return true;
     }
   }catch(e){
-    if(e && e.name === "AbortError") return;
+    if(e && e.name === "AbortError") return false;
     console.warn("Teilen nicht möglich, falle zurück auf Download", e);
   }
   const url = URL.createObjectURL(blob);
@@ -2713,6 +2754,7 @@ async function triggerDownload(blob, filename){
     a.remove();
   }catch(e){ console.error(e); }
   showDownloadFallback(url, filename);
+  return true;
 }
 function showDownloadFallback(url, filename){
   let bar = document.getElementById("downloadFallbackBar");
@@ -2772,11 +2814,12 @@ async function finishRecord(){
   const finishedData = S;
   const finishedId = currentRecordId;
   const rec = records.find(r=>r.id===currentRecordId);
-  if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); }
+  if(rec){ rec.status = "fertig"; rec.updatedAt = Date.now(); rec.pdfExportedAt = null; }
   const saved = await saveRecords();
   if(!saved) safeAlert("ACHTUNG: Der Vor-Ort-Check ist abgeschlossen, konnte aber NICHT gespeichert werden (" + storageError + ").\n\nApp nicht schließen, Protokoll jetzt herunterladen und Bescheid geben.");
   screen = "fertig"; S = null; currentRecordId = null;
   render();
+  enforceFinishedLimit();
   preparePDF(finishedId, finishedData);
 }
 
@@ -2794,6 +2837,7 @@ async function finishRecord(){
   try{ pendingDeletes = (await idbGet(PENDING_DELETES_KEY)) || []; }catch(e){ pendingDeletes = []; }
   screen = "home";
   render();
+  enforceFinishedLimit();
   scheduleBackup(2000);
 })();
 </script>

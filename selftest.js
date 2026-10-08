@@ -153,6 +153,31 @@ async function selftest(){
     check("Alle Fotos: Aufnahmedatum der Kopien wird auf jetzt gesetzt", ok, ok ? "" : "Datum nicht ersetzt oder Datei verändert");
   }catch(e){ check("Alle Fotos: Aufnahmedatum der Kopien wird auf jetzt gesetzt", false, e.message); }
 
+  // --- Test 8: Nur 15 abgeschlossene bleiben; nie Entwürfe, nie ungesicherte PDFs ---
+  {
+    const realRecords = records, realSave = saveRecords, realQueue = queueBackupDelete, realToast = showToast, realCurrent = currentRecordId;
+    const queued = [];
+    try{
+      saveRecords = async ()=> true;              // im Test nichts wirklich speichern/löschen
+      queueBackupDelete = id=> queued.push(id);
+      showToast = ()=>{};
+      currentRecordId = null;
+      const mk = (id, status, t, exported)=>{ const r = { id, status, updatedAt: t, data: freshState() }; if(exported !== "legacy") r.pdfExportedAt = exported; return r; };
+      records = [mk("draftOld", "draft", 1, "legacy")];
+      for(let i = 0; i <= 16; i++) records.push(mk("T"+i, "fertig", 100+i, i === 1 || i === 16 ? null : "legacy"));
+      enforceFinishedLimit();
+      const step1 = !records.some(r=> r.id==="T0") && records.some(r=> r.id==="T1") && records.some(r=> r.id==="draftOld") && records.some(r=> r.id==="T16");
+      markPdfExported("T1");
+      const step2 = !records.some(r=> r.id==="T1") && records.filter(r=> r.status==="fertig").length === 15 && records.some(r=> r.id==="draftOld");
+      const backupOk = queued.join(",") === "T0,T1";
+      check("Limit 15: Älteste gesicherte weg, Entwürfe und ungesicherte bleiben", step1 && step2 && backupOk,
+        !step1 ? "Falscher Eintrag gelöscht/behalten (Schritt 1)" : !step2 ? "Nach dem Sichern nicht korrekt aufgeräumt" : !backupOk ? "Backup-Löschung falsch: " + queued.join(",") : "");
+    }catch(e){ check("Limit 15: Älteste gesicherte weg, Entwürfe und ungesicherte bleiben", false, e.message); }
+    finally{
+      records = realRecords; saveRecords = realSave; queueBackupDelete = realQueue; showToast = realToast; currentRecordId = realCurrent;
+    }
+  }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

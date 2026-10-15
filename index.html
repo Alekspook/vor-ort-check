@@ -772,7 +772,7 @@ function unpackFromDB(obj, photos){
 }
 function recordSig(r){ return `${r.updatedAt}|${r.status}|${r.backedUpAt||""}|${r.pdfExportedAt}`; }
 
-async function loadPhotos(keys){
+async function loadPhotos(keys, track){
   const photos = new Map();
   const db = await openDB();
   const tx = db.transaction(PHOTO_STORE, "readonly");
@@ -788,17 +788,45 @@ async function loadPhotos(keys){
     }catch(e){}
     console.warn("Foto fehlt lokal und in der Cloud:", key);
   }
-  photos.forEach((dataUrl, key)=>{ photoKeys.set(dataUrl, key); storedPhotos.add(key); });
+  photos.forEach((dataUrl, key)=>{ if(track) photoKeys.set(dataUrl, key); });
   return photos;
+}
+
+/* Fotos liegen im Speicher nur für den gerade geöffneten Check (bzw. kurz für PDF/Export).
+   Alle Checks samt Fotos gleichzeitig zu laden (hunderte MB) hat Safari auf dem iPhone
+   beim Start abstürzen lassen ("wiederholt ein Problem aufgetreten"). */
+function hasPhotoRefs(obj){ return collectPhotoKeys(obj, new Set()).size > 0; }
+async function withPhotos(data, track){
+  const keys = collectPhotoKeys(data, new Set());
+  if(!keys.size) return data;
+  return unpackFromDB(data, await loadPhotos(keys, track));
+}
+async function hydrateRecord(rec){
+  if(hasPhotoRefs(rec.data)) rec.data = await withPhotos(rec.data, true);
+  return rec.data;
+}
+function photosToRefs(obj){
+  if(isPhoto(obj)){ const key = photoKeys.get(obj); return key && storedPhotos.has(key) ? { $ph: key } : obj; }
+  if(Array.isArray(obj)) return obj.map(photosToRefs);
+  if(obj && typeof obj === "object"){ const out = {}; for(const k of Object.keys(obj)) out[k] = photosToRefs(obj[k]); return out; }
+  return obj;
+}
+function dehydrateRecord(rec){
+  if(rec && rec.data && rec.data !== S) rec.data = photosToRefs(rec.data);
+  prunePhotoCaches();
+}
+function prunePhotoCaches(){
+  const keep = new Set(S ? allPhotosIn(S, []) : []);
+  for(const d of [...photoKeys.keys()]) if(!keep.has(d)) photoKeys.delete(d);
+  for(const d of [...photoUrlPromises.keys()]) if(!keep.has(d)) photoUrlPromises.delete(d);
 }
 async function loadRecords(){
   const rows = await idbRequest(REC_STORE, "readonly", s=> s.getAll());
   if(!rows || !rows.length) return await migrateLegacyRecords();
   const keys = new Set();
   rows.forEach(row=> collectPhotoKeys(row.data, keys));
-  const photos = await loadPhotos(keys);
   const out = rows.map(row=>{
-    const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: unpackFromDB(row.data, photos) };
+    const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: row.data };
     if(row.backedUpAt) r.backedUpAt = row.backedUpAt;
     if(row.pdfExportedAt !== undefined) r.pdfExportedAt = row.pdfExportedAt;
     persistedSig.set(r.id, recordSig(r));
@@ -823,6 +851,7 @@ async function migrateLegacyRecords(){
 }
 async function cleanupUnusedPhotos(usedKeys){
   const allKeys = await idbRequest(PHOTO_STORE, "readonly", s=> s.getAllKeys());
+  (allKeys || []).forEach(k=> storedPhotos.add(k));
   const unused = (allKeys || []).filter(k=> !usedKeys.has(k));
   if(!unused.length) return;
   await idbRequest(PHOTO_STORE, "readwrite", s=>{ unused.forEach(k=> s.delete(k)); });
@@ -985,9 +1014,15 @@ function startNewRecord(){
   saveRecords();
   render();
 }
-function openRecord(id){
+async function openRecord(id){
   const rec = records.find(r=>r.id===id);
   if(!rec) return;
+  if(hasPhotoRefs(rec.data)){
+    showToast("Fotos werden geladen…");
+    try{ await hydrateRecord(rec); }
+    catch(e){ console.error(e); safeAlert("Die Fotos dieses Vor-Ort-Checks konnten nicht geladen werden (" + ((e && e.message) || e) + "). Bitte App neu öffnen."); return; }
+    const t = document.getElementById("toast"); if(t) t.remove();
+  }
   delete pdfCache["current"];
   S = rec.data;
   currentRecordId = id;
@@ -996,9 +1031,11 @@ function openRecord(id){
 }
 function goHome(){
   clearTimeout(saveTimer);
-  saveCurrentRecord();
+  const rec = records.find(r=> r.id === currentRecordId);
+  const saved = saveCurrentRecord();
   S = null; currentRecordId = null; screen = "home";
   render();
+  saved.then(()=> dehydrateRecord(rec));
 }
 function goScreen(s){ screen = s; listQuery = ""; render(); }
 function showConfirm(message, onConfirm, okLabel, okColor){
@@ -1108,7 +1145,14 @@ async function quickPDF(id){
   if(!rec) return;
   const entry = pdfCache[id];
   if(entry && entry.status === "ready"){ sharePDF(id); }
-  else { await preparePDF(id, rec.data); }
+  else {
+    if(pdfCache[id] && pdfCache[id].status === "building") return;
+    let data;
+    try{ data = await withPhotos(rec.data); }
+    catch(e){ console.error(e); safeAlert("Fotos konnten nicht geladen werden: " + ((e && e.message) || e)); return; }
+    await preparePDF(id, data);
+    prunePhotoCaches();
+  }
 }
 
 /* ---------- Master render ---------- */
@@ -2025,8 +2069,25 @@ function downloadAllPhotos(id){
   menuOpen = false;
   const data = id === "current" ? S : (records.find(r=> r.id === id) || {}).data;
   if(!data) return;
+  if(hasPhotoRefs(data)){
+    // Fotos liegen noch nicht im Speicher: erst laden, dann per zweitem Tap teilen (iOS braucht den frischen Tap).
+    showToast("Fotos werden vorbereitet…");
+    withPhotos(data).then(full=>{
+      const t = document.getElementById("toast"); if(t) t.remove();
+      const files = buildPhotoFiles(full);
+      if(!files.length){ safeAlert("Bei diesem Vor-Ort-Check sind keine Fotos vorhanden."); return; }
+      showConfirm(`${files.length} Fotos sind bereit.`, ()=> shareFiles(files), "Fotos teilen", "var(--green)");
+    }).catch(e=>{ console.error(e); safeAlert("Fotos konnten nicht geladen werden: " + ((e && e.message) || e)); });
+    render();
+    return;
+  }
+  const files = buildPhotoFiles(data);
+  if(!files.length){ safeAlert("Bei diesem Vor-Ort-Check sind keine Fotos vorhanden."); render(); return; }
+  shareFiles(files);
+  render();
+}
+function buildPhotoFiles(data){
   const photos = recordPhotoList(data);
-  if(!photos.length){ safeAlert("Bei diesem Vor-Ort-Check sind keine Fotos vorhanden."); render(); return; }
   const base = customerFileBase(data);
   // Fotos mit eigenem Aufnahmedatum (z.B. Drohne) knapp vor "jetzt" legen: alle landen zusammen bei den neuesten, in App-Reihenfolge.
   const now = Date.now();
@@ -2034,6 +2095,9 @@ function downloadAllPhotos(id){
     const ext = p.url.indexOf("data:image/png") === 0 ? "png" : "jpg";
     return dataUrlToFile(p.url, `${base}-${String(i+1).padStart(2,"0")}-${fileSafe(p.label)}.${ext}`, new Date(now - (photos.length - i) * 1000));
   });
+  return files;
+}
+function shareFiles(files){
   if(navigator.canShare && navigator.canShare({ files })){
     navigator.share({ files }).catch(e=>{
       if(e && e.name === "AbortError") return;
@@ -2054,7 +2118,6 @@ function downloadAllPhotos(id){
       setTimeout(()=> URL.revokeObjectURL(url), 60000);
     }, i * 400));
   }
-  render();
 }
 function loadImageEl(url){
   return new Promise((resolve, reject)=>{
@@ -2165,9 +2228,28 @@ function queueBackupDelete(id){
 function recordsNotBackedUp(){
   return records.filter(r=> !r.backedUpAt || r.backedUpAt < r.updatedAt);
 }
+const keyUrlPromises = new Map();
+// Für Fotos, die nur als Verweis im Speicher liegen: in der Cloud nachsehen, sonst aus dem Handy-Speicher hochladen.
+function ensureKeyUploaded(key){
+  if(!keyUrlPromises.has(key)){
+    keyUrlPromises.set(key, (async ()=>{
+      const url = `${SUPABASE_URL}/storage/v1/object/public/photos/${key}`;
+      try{ const head = await fetch(url + "?check=" + Date.now(), { method: "HEAD", cache: "no-store" }); if(head.ok) return url; }catch(e){}
+      const photos = await loadPhotos(new Set([key]));
+      const dataUrl = photos.get(key);
+      return dataUrl ? await uploadPhotoForLink(dataUrl) : null;
+    })().then(url=>{ if(!url) keyUrlPromises.delete(key); return url; }));
+  }
+  return keyUrlPromises.get(key);
+}
 async function packPhotos(obj){
   if(typeof obj === "string" && obj.indexOf("data:image") === 0){
     const url = await ensurePhotoUploaded(obj);
+    if(!url) throw new Error("Foto konnte nicht hochgeladen werden");
+    return { $photo: url };
+  }
+  if(obj && typeof obj === "object" && !Array.isArray(obj) && typeof obj.$ph === "string"){
+    const url = await ensureKeyUploaded(obj.$ph);
     if(!url) throw new Error("Foto konnte nicht hochgeladen werden");
     return { $photo: url };
   }
@@ -2242,8 +2324,10 @@ async function restoreFromBackup(){
     for(const row of missing){
       backupRestoreProgress = `Stelle wieder her… ${done+1} von ${missing.length}`; render();
       const data = await unpackPhotos(row.data);
-      records.push({ id: row.id, status: row.status, updatedAt: row.updated_at, backedUpAt: row.updated_at, data });
+      const restored = { id: row.id, status: row.status, updatedAt: row.updated_at, backedUpAt: row.updated_at, data };
+      records.push(restored);
       await saveRecords();
+      dehydrateRecord(restored);
       done++;
     }
     backupMessage = missing.length
@@ -2820,7 +2904,8 @@ async function finishRecord(){
   screen = "fertig"; S = null; currentRecordId = null;
   render();
   enforceFinishedLimit();
-  preparePDF(finishedId, finishedData);
+  preparePDF(finishedId, finishedData).then(()=> prunePhotoCaches());
+  if(saved) dehydrateRecord(rec);
 }
 
 /* ---------- Boot ---------- */

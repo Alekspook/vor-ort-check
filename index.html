@@ -1339,7 +1339,7 @@ function photoSlot(path, label, required, noSketch){
     <div class="field" id="${domId(path)}">
       <label class="field-label">${label}${required?' <span class="req">*</span>':""}</label>
       <div class="photo-preview">
-        <img src="${val}" alt="${label}">
+        <img src="${val}" alt="${label}" loading="lazy" decoding="async">
         <button type="button" class="photo-remove" onclick="setPath(S,'${path}',null); scheduleAutosave(); render();">Entfernen</button>
       </div>
       ${noSketch ? "" : `
@@ -1602,7 +1602,7 @@ function roofPhotoGrid(i){
       <label class="field-label">Dachfotos <span class="req">*</span> <span class="field-count">${urls.length} von ${ROOF_PHOTO_MAX}</span></label>
       ${urls.length ? `<div class="photo-grid">${urls.map((u,k)=>`
         <div class="photo-thumb">
-          <img src="${u}" alt="Dachfoto ${k+1}">
+          <img src="${u}" alt="Dachfoto ${k+1}" loading="lazy" decoding="async">
           <span class="thumb-num">${k+1}</span>
           <button type="button" class="thumb-remove" aria-label="Dachfoto ${k+1} entfernen" onclick="removeRoofPhoto(${i},${k})">${icon("close",14)}</button>
         </div>`).join("")}</div>` : ""}

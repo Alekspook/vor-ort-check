@@ -1776,7 +1776,8 @@ function roofPhotoGrid(i){
           <input type="file" accept="image/*" multiple onchange="addRoofPhotos(event,${i})" hidden>
           ${icon("image",20)}<span>Galerie</span>
         </label>
-      </div>` : `<div class="note" style="margin:0;">Alle ${ROOF_PHOTO_MAX} Plätze belegt.</div>`}
+      </div>
+      <div class="note" style="margin:8px 2px 0;">In der Galerie kannst du mehrere Fotos auf einmal auswählen.</div>` : `<div class="note" style="margin:0;">Alle ${ROOF_PHOTO_MAX} Plätze belegt.</div>`}
     </div>`;
 }
 async function addRoofPhotos(evt, i){

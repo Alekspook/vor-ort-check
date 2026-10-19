@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Baut aus index.html die Design-Testversion (neues Design, eigener Speicher, Beispieldaten).
-Aufruf: redesign.py <index.html> <ausgabe.html> [--preview]"""
+Aufruf: redesign.py <index.html> <ausgabe.html> [--preview]
+
+Am 2026-10-20 auf index.html angewendet und live gestellt. Nicht erneut auf das
+aktuelle index.html anwenden; es dient nur noch als Nachweis, was umgebaut wurde."""
 import sys, re, os
 
 src, dst = sys.argv[1], sys.argv[2]

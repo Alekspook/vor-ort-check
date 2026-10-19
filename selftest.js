@@ -190,6 +190,25 @@ async function selftest(){
     check("Fotoplätze behalten ihre Höhe, bevor das Foto geladen ist", h >= 200, h >= 200 ? "" : `Höhe ungeladen: ${h}px — Seite springt bei Auswahl`);
   }catch(e){ check("Fotoplätze behalten ihre Höhe, bevor das Foto geladen ist", false, e.message); }
 
+  // --- Test 10: Alte Datensätze werden auf die neuen Begriffe umgestellt, nichts geht verloren ---
+  try{
+    const d = freshState();
+    delete d.abschluss; delete d.elektro.zaehler.raumuebersicht; delete d.daecher[0].traufhoehe; delete d.daecher[0].ziegelFoto; delete d.gebaeude.abstellortFoto;
+    Object.assign(d.daecher[0], { dcLeitungsweg:"Fassade im Alurohr", regenrinne:"vorhanden", geruest:"Kunde stellt Gerüst", traufe8:"über 5m", bemerkung1:"alt" });
+    Object.assign(d.elektro.zaehler, { neuerZaehlerschrank:"muss geprüft werden", weitereUV:"vorhanden", neueUV:"erforderlich" });
+    Object.assign(d.elektro.hausanschluss, { typ:"HA-Innen", fundamenterder:"vorhanden" });
+    Object.assign(d.elektro, { waermepumpe:"geplant", wallbox:"gewünscht", messkonzept:"keine Änderung" });
+    d.elektro.komponenten.notstrom = true;
+    normalizeRecordData(d);
+    const got = [d.daecher[0].dcLeitungsweg, d.daecher[0].regenrinne, d.daecher[0].geruest, d.elektro.zaehler.neuerZaehlerschrank, d.elektro.zaehler.weitereUV,
+      d.elektro.zaehler.neueUV, d.elektro.hausanschluss.typ, d.elektro.hausanschluss.fundamenterder, d.elektro.waermepumpe, d.elektro.wallbox, d.elektro.messkonzept].join("|");
+    const want = "Alurohr Fassade|Ja|Stellt Kunde|Prüfen|Ja|Ja|Innen|Ja|Geplant|Gewünscht|Keine Änderung";
+    const kept = d.daecher[0].traufe8 === "über 5m" && d.daecher[0].bemerkung1 === "alt";
+    const added = d.abschluss && d.abschluss.angebot.includes("Notstrom") && d.elektro.zaehler.raumuebersicht === null && d.daecher[0].ziegelFoto === null && d.gebaeude.abstellortFoto === null;
+    check("Alte Datensätze: Begriffe umgestellt, alte Angaben erhalten", got === want && kept && added,
+      got !== want ? "Umstellung falsch: " + got : !kept ? "Alte Angaben verloren" : !added ? "Neue Felder fehlen" : "");
+  }catch(e){ check("Alte Datensätze: Begriffe umgestellt, alte Angaben erhalten", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

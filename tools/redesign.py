@@ -818,11 +818,7 @@ function openSketchModal(path, label){
   modal.className = "sketch-modal";
   modal.id = "sketchModal";
   modal.innerHTML = `
-    <div class="sketch-modal-head">
-      <button type="button" onclick="sketchCancel()">Abbrechen</button>
-      <h2>${escapeHtml(label || "Einzeichnen")}</h2>
-      <button type="button" class="save" onclick="saveSketch()">Fertig</button>
-    </div>
+    <div class="sketch-modal-head"><h2>${escapeHtml(label || "Einzeichnen")}</h2></div>
     <div class="sketch-canvas-wrap"><canvas id="sketchCanvas"></canvas></div>
     <div class="sketch-toolbar">
       <div class="sk-group">
@@ -835,6 +831,10 @@ function openSketchModal(path, label){
       </div>
       <div class="sk-group">${SKETCH_COLORS.map(([c,n],i)=>`<button type="button" class="sk-color ${i===0 ? "active" : ""}" style="--c:${c}" data-color="${c}" onclick="setSketchColor('${c}')" aria-label="Farbe ${n}" title="${n}"></button>`).join("")}</div>
       <div class="sk-group">${SKETCH_SIZES.map(([n,f],i)=>`<button type="button" class="sk-size ${i===1 ? "active" : ""}" data-size="${f}" onclick="setSketchSize(${f})" aria-label="Strichstärke ${n}" title="${n}"><i style="width:${5+i*5}px;height:${5+i*5}px"></i></button>`).join("")}</div>
+    </div>
+    <div class="sketch-footer">
+      <button type="button" class="cancel" onclick="sketchCancel()">Abbrechen</button>
+      <button type="button" class="save" onclick="saveSketch()">Fertig</button>
     </div>`;
   document.body.appendChild(modal);
   const canvas = document.getElementById("sketchCanvas");

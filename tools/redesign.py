@@ -536,30 +536,224 @@ function seedDemoRecords(){
     mk("Lena", "Hoffmann", "Frau", "Lindenallee", "12", "14641", "Nauen", "draft", 0, d=>{
       d.gebaeude.kategorie = "Einfamilienhaus";
       d.elektro.stromverbrauch = "4200"; d.elektro.grossverbraucher.eauto = "2500";
-      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "vorhanden", regenrinneMaterial: "Zink", dcLeitungsweg: "alter Kaminschacht", traufe8: "unter 5m" });
+      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "Ja", regenrinneMaterial: "Zink", dcLeitungsweg: "Kaminschacht", traufhoehe: "4,73" });
       d.daecher[0].fotos[0] = demoPhoto("Dach Süd", 20, 200); d.daecher[0].fotos[1] = demoPhoto("Dach Ost", 35, 210); d.daecher[0].drohnenFotos[0] = demoPhoto("Drohne", 190, 230);
       d.daecher[0].dcFotos[0] = demoPhoto("Kaminschacht", 25, 15);
-      d.elektro.zaehler.neuerZaehlerschrank = "muss geprüft werden";
+      d.elektro.zaehler.neuerZaehlerschrank = "Prüfen";
+      d.abschluss.bemerkung = "Kundin möchte Speicher im Keller, Termin für Angebot nächste Woche.";
+      d.abschluss.angebot = ["Tiefenerder", "Wallbox"];
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 170, 200);
     }),
     mk("Jonas", "Weber", "Herr", "Am Mühlenberg", "3", "14712", "Rathenow", "fertig", 2, d=>{
       d.gebaeude.kategorie = "Reihenhaus"; d.elektro.stromverbrauch = "3600";
-      Object.assign(d.daecher[0], { dachart: "Flachdach", dachaufbau: "Bitumen", dcLeitungsweg: "Fassade im Alurohr", traufe8: "über 5m", geruest: "Ja" });
+      Object.assign(d.daecher[0], { dachart: "Flachdach", dachaufbau: "Bitumen", dcLeitungsweg: "Alurohr Fassade", traufhoehe: "6,10", geruest: "Ja" });
       d.daecher[0].fotos[0] = demoPhoto("Flachdach", 200, 220);
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 160, 190);
-      d.elektro.hausanschluss.typ = "HA-Innen"; d.elektro.messkonzept = "keine Änderung";
+      d.elektro.hausanschluss.typ = "Innen"; d.elektro.messkonzept = "Keine Änderung";
     }),
     mk("", "Familie Schulz", "Familie", "Birkenweg", "7a", "14612", "Falkensee", "fertig", 6, d=>{
       d.gebaeude.kategorie = "Einfamilienhaus"; d.elektro.stromverbrauch = "5100"; d.elektro.grossverbraucher.waermepumpe = "3800";
-      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", dcLeitungsweg: "vorh. Leerrohr", traufe8: "unter 5m", geruest: "Fallschutz reicht" });
+      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", dcLeitungsweg: "Leerrohr", traufhoehe: "3,90", geruest: "Fallschutz reicht" });
       d.daecher[0].fotos[0] = demoPhoto("Dach", 15, 205);
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 150, 200);
-      d.elektro.hausanschluss.typ = "HA-Außen"; d.elektro.messkonzept = "Kaskade";
+      d.elektro.hausanschluss.typ = "Außen"; d.elektro.messkonzept = "Kaskade";
     })
   ];
 }
 
 /* ---------- Boot ---------- */""")
+
+
+# ---------- 9) Inhaltliche Änderungen (Begriffe, Traufhöhe in m, Raumübersicht, Tiefenerder, EcoFlow-Turm, Bemerkungen, Angebot) ----------
+rep("""    traufe8:"", geruest:"", geruestBemerkung:\"\"""", """    traufe8:"", traufhoehe:"", geruest:"", geruestBemerkung:\"\"""")
+rep("zaehler:{ uebersicht:null, ohneAbdeckungen:null,", "zaehler:{ raumuebersicht:null, uebersicht:null, ohneAbdeckungen:null,")
+rep("""    zusatzbilder:[],
+    email:{""", """    zusatzbilder:[],
+    abschluss:{ bemerkung:"", angebot:[] },
+    email:{""")
+rep("let S = null;\n", r"""let S = null;
+
+/* Alte Antworten auf die neuen, kürzeren Begriffe umstellen (beim Laden, nicht gespeichert
+   bis zur nächsten Änderung). Felder, die es nicht mehr gibt, bleiben in den Daten erhalten. */
+const VALUE_RENAMES = {
+  janein: { "vorhanden":"Ja", "nicht vorhanden":"Nein" },
+  erforderlich: { "erforderlich":"Ja", "nicht erforderlich":"Nein" },
+  kabelweg: { "vorh. Leerrohr":"Leerrohr", "alter Kaminschacht":"Kaminschacht", "Fassade im Alurohr":"Alurohr Fassade" },
+  geruest: { "muss geprüft werden":"Prüfen", "Kunde stellt Gerüst":"Stellt Kunde" },
+  zaehlerschrank: { "Erforderlich":"Ja", "nicht erforderlich":"Nein", "muss geprüft werden":"Prüfen" },
+  ha: { "HA-Innen":"Innen", "HA-Außen":"Außen", "kein eigener HA vorhanden":"Kein eigener" },
+  wp: { "vorhanden":"Vorhanden", "nicht vorhanden":"Keine", "geplant":"Geplant" },
+  wallbox: { "vorhanden":"Vorhanden", "nicht vorhanden":"Keine", "gewünscht":"Gewünscht" },
+  messkonzept: { "keine Änderung":"Keine Änderung" }
+};
+function normalizeRecordData(d){
+  if(!d || typeof d !== "object") return d;
+  const map = (obj, key, table)=>{ if(obj && typeof obj[key] === "string" && Object.prototype.hasOwnProperty.call(table, obj[key])) obj[key] = table[obj[key]]; };
+  const R = VALUE_RENAMES;
+  (d.daecher || []).forEach(r=>{
+    map(r, "dcLeitungsweg", R.kabelweg); map(r, "regenrinne", R.janein); map(r, "geruest", R.geruest);
+    if(r.traufhoehe === undefined) r.traufhoehe = "";
+  });
+  const e = d.elektro || {}, z = e.zaehler || {}, h = e.hausanschluss || {};
+  map(z, "neuerZaehlerschrank", R.zaehlerschrank); map(z, "weitereUV", R.janein); map(z, "neueUV", R.erforderlich); map(z, "wanddurchbrueche", R.erforderlich);
+  if(e.zaehler && z.raumuebersicht === undefined) z.raumuebersicht = null;
+  map(h, "typ", R.ha); map(h, "potenzialausgleich", R.janein); map(h, "fundamenterder", R.janein);
+  map(e, "waermepumpe", R.wp); map(e, "wallbox", R.wallbox); map(e, "messkonzept", R.messkonzept);
+  if(!d.abschluss || typeof d.abschluss !== "object") d.abschluss = { bemerkung:"", angebot:[] };
+  if(!Array.isArray(d.abschluss.angebot)) d.abschluss.angebot = [];
+  if(typeof d.abschluss.bemerkung !== "string") d.abschluss.bemerkung = "";
+  return d;
+}
+""")
+rep("const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: row.data };",
+    "const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: normalizeRecordData(row.data) };")
+rep("const data = await unpackPhotos(row.data);", "const data = normalizeRecordData(await unpackPhotos(row.data));")
+rep("  records = legacy;\n", "  records = legacy;\n  legacy.forEach(r=> normalizeRecordData(r.data));\n")
+rep("r.dcLeitungsweg && r.traufe8 && r.geruest", "r.dcLeitungsweg && (r.traufhoehe || r.traufe8) && r.geruest")
+
+# Neue Feld-Bausteine
+rep("function verbrauchTotal(){", r"""function meterField(label, path, legacy){
+  const val = getPath(S, path) ?? "";
+  return `
+    <label class="row row-input" id="${domId(path)}">
+      <span class="row-label">${label}</span>
+      <span class="input-unit"><input type="text" inputmode="decimal" value="${escapeAttr(val)}" placeholder="${legacy ? "bisher: " + escapeAttr(legacy) : "z. B. 4,73"}"
+        oninput="setPath(S,'${path}', this.value); scheduleAutosave();"><em>m</em></span>
+    </label>`;
+}
+function toggleInList(path, value, on){
+  const list = (getPath(S, path) || []).filter(v=> v !== value);
+  if(on) list.push(value);
+  setPath(S, path, list);
+  scheduleAutosave();
+  render();
+}
+function multiChipField(label, path, options){
+  const vals = getPath(S, path) || [];
+  return `
+    <div class="row row-choice" id="${domId(path)}" aria-label="${escapeAttr(label)}">
+      <span class="row-label">${label}</span>
+      <div class="chips">
+        ${options.map(o=>`
+          <label class="chip ${vals.includes(o) ? "checked" : ""}">
+            <input type="checkbox" ${vals.includes(o) ? "checked" : ""} onchange="toggleInList('${path}','${escapeAttr(o)}', this.checked)">
+            <span>${o}</span>
+          </label>`).join("")}
+      </div>
+    </div>`;
+}
+// Einzel-Bemerkungen gibt es nicht mehr; alte Inhalte bleiben sichtbar und bearbeitbar.
+function legacyNote(label, path){ return getPath(S, path) ? textareaField(label + " (alt)", path) : ""; }
+const ANGEBOT_POSITIONEN = ["Tiefenerder", "Notstrom", "Wallbox", "Neuer Zählerschrank", "Unterverteilung", "Gerüst", "Wanddurchbrüche"];
+function verbrauchTotal(){""")
+
+# Formular: Dach
+rep("""      ${radioField("Regenrinne", `daecher.${i}.regenrinne`, ["vorhanden","nicht vorhanden"])}
+      ${d.regenrinne === "vorhanden" ? """, """      ${radioField("Regenrinne vorhanden?", `daecher.${i}.regenrinne`, ["Ja","Nein"])}
+      ${d.regenrinne === "Ja" ? """)
+rep("""      ${textareaField("Bemerkungen", `daecher.${i}.bemerkung1`)}
+      ${roofPhotoGrid(i)}""", """      ${legacyNote("Bemerkungen", `daecher.${i}.bemerkung1`)}
+      ${roofPhotoGrid(i)}""")
+rep("""["vorh. Leerrohr","alter Kaminschacht","Fassade im Alurohr","Sonstige"]""", """["Leerrohr","Kaminschacht","Alurohr Fassade","Sonstige"]""")
+rep("""radioField("Wanddurchbrüche notwendig", `daecher.${i}.wanddurchbrueche`""", """radioField("Wanddurchbrüche nötig?", `daecher.${i}.wanddurchbrueche`""")
+rep("""      ${radioField("Traufhöhe", `daecher.${i}.traufe8`, ["über 5m","unter 5m"])}
+      ${radioField("Gerüst erforderlich", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","muss geprüft werden","Kunde stellt Gerüst"])}
+      ${textareaField("Bemerkungen Gerüst", `daecher.${i}.geruestBemerkung`)}""", """      ${meterField("Traufhöhe", `daecher.${i}.traufhoehe`, d.traufe8)}
+      ${radioField("Gerüst nötig?", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","Prüfen","Stellt Kunde"])}
+      ${legacyNote("Bemerkungen Gerüst", `daecher.${i}.geruestBemerkung`)}""")
+# Formular: Zählerschrank
+rep("""${radioField("Neuer Zählerschrank", "elektro.zaehler.neuerZaehlerschrank", ["Erforderlich","nicht erforderlich","muss geprüft werden"])}""",
+    """${radioField("Neuer Zählerschrank nötig?", "elektro.zaehler.neuerZaehlerschrank", ["Ja","Nein","Prüfen"])}""")
+rep("""        ${photoSlot("elektro.zaehler.uebersicht","Übersicht", true)}
+        ${photoSlot("elektro.zaehler.ohneAbdeckungen","Ohne Abdeckungen", false)}""", """        ${photoSlot("elektro.zaehler.raumuebersicht","Raumübersicht", false)}
+        ${photoSlot("elektro.zaehler.uebersicht","Übersicht Zählerschrank", true)}
+        ${z.ohneAbdeckungen ? photoSlot("elektro.zaehler.ohneAbdeckungen","Ohne Abdeckungen (alt)", false) : ""}""")
+rep("""        ${radioField("Weitere Unterverteilungen", "elektro.zaehler.weitereUV", ["vorhanden","nicht vorhanden"])}
+        ${z.weitereUV === "vorhanden" ? """, """        ${radioField("Weitere Unterverteilung vorhanden?", "elektro.zaehler.weitereUV", ["Ja","Nein"])}
+        ${z.weitereUV === "Ja" ? """)
+rep("""        ${radioField("Neue Unterverteilung", "elektro.zaehler.neueUV", ["erforderlich","nicht erforderlich"])}
+        ${z.neueUV === "erforderlich" ? """, """        ${radioField("Neue Unterverteilung nötig?", "elektro.zaehler.neueUV", ["Ja","Nein"])}
+        ${z.neueUV === "Ja" ? """)
+rep("""        ${radioField("Wanddurchbrüche", "elektro.zaehler.wanddurchbrueche", ["erforderlich","nicht erforderlich"])}
+        ${z.wanddurchbrueche === "erforderlich" ? """, """        ${radioField("Wanddurchbrüche nötig?", "elektro.zaehler.wanddurchbrueche", ["Ja","Nein"])}
+        ${z.wanddurchbrueche === "Ja" ? """)
+# Formular: Hausanschluss
+rep("""        ${radioField("Hausanschluss", "elektro.hausanschluss.typ", ["HA-Innen","HA-Außen","kein eigener HA vorhanden"], {required:true})}""",
+    """        ${radioField("Lage Hausanschluss", "elektro.hausanschluss.typ", ["Innen","Außen","Kein eigener"], {required:true})}""")
+rep("""        ${radioField("Potenzialausgleichsschiene", "elektro.hausanschluss.potenzialausgleich", ["vorhanden","nicht vorhanden"])}
+        ${h.potenzialausgleich === "vorhanden" ? """, """        ${radioField("Potenzialausgleichsschiene vorhanden?", "elektro.hausanschluss.potenzialausgleich", ["Ja","Nein"])}
+        ${h.potenzialausgleich === "Ja" ? """)
+rep("""        ${radioField("Fundamenterder", "elektro.hausanschluss.fundamenterder", ["vorhanden","nicht vorhanden"])}
+        ${h.fundamenterder === "vorhanden" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.fundamenterderFoto","Foto Fundamenterder", false)}</div>` : ""}
+        ${textareaField("Bemerkungen", "elektro.hausanschluss.bemerkung")}""", """        ${radioField("Tiefenerder vorhanden?", "elektro.hausanschluss.fundamenterder", ["Ja","Nein"])}
+        ${h.fundamenterder === "Ja" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.fundamenterderFoto","Foto Tiefenerder", false)}</div>` : ""}
+        ${legacyNote("Bemerkungen", "elektro.hausanschluss.bemerkung")}""")
+# Formular: Wärmepumpe & Wallbox
+rep("""        ${radioField("Wärmepumpe", "elektro.waermepumpe", ["vorhanden","nicht vorhanden","geplant"])}
+        ${e.waermepumpe === "vorhanden" ? """, """        ${radioField("Wärmepumpe", "elektro.waermepumpe", ["Vorhanden","Keine","Geplant"])}
+        ${e.waermepumpe === "Vorhanden" ? """)
+rep("""        ${radioField("Wallbox", "elektro.wallbox", ["vorhanden","nicht vorhanden","gewünscht"])}
+        ${e.wallbox === "vorhanden" ? """, """        ${radioField("Wallbox", "elektro.wallbox", ["Vorhanden","Keine","Gewünscht"])}
+        ${e.wallbox === "Vorhanden" ? """)
+rep("""        ${e.wallbox === "gewünscht" ? """, """        ${e.wallbox === "Gewünscht" ? """)
+rep("""radioField("Sind Durchbrüche notwendig?", "elektro.wallboxDurchbrueche\"""", """radioField("Durchbrüche nötig?", "elektro.wallboxDurchbrueche\"""")
+# Formular: Hardware (EcoFlow OCEAN 2 = Wechselrichter + Speicher in einem Turm)
+rep("""        ${checkField("Wechselrichter", "elektro.komponenten.hybrid")}
+        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter", false)}</div>` : ""}
+        ${checkField("Batteriespeicher", "elektro.komponenten.batterie")}
+        ${e.komponenten.batterie ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher", false)}</div>` : ""}
+        ${checkField("Notstrom", "elektro.komponenten.notstrom")}
+        ${textareaField("Bemerkung", "elektro.montageortBemerkung")}""", """        ${checkField("Wechselrichter + Speicher (Turm)", "elektro.komponenten.hybrid")}
+        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}
+        ${e.komponenten.batterie || e.fotoSpeicher ? checkField("Batteriespeicher separat (alt)", "elektro.komponenten.batterie") : ""}
+        ${e.komponenten.batterie && e.fotoSpeicher !== undefined ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (alt)", false)}</div>` : ""}
+        ${checkField("Notstrom", "elektro.komponenten.notstrom")}
+        ${legacyNote("Bemerkung", "elektro.montageortBemerkung")}""")
+rep("""["keine Änderung","Zusammenlegung","Kaskade"]""", """["Keine Änderung","Zusammenlegung","Kaskade"]""")
+# Formular: Abschluss mit allgemeiner Bemerkung und Angebots-Positionen
+rep("""    sec(8, "abschluss", "Weitere Fotos", `
+      ${S.zusatzbilder.length ? `<div class="group">${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Bild ${i+1}`, false)).join("")}</div>` : ""}
+      <button class="ghost-btn" onclick="addExtraPhoto()">${icon("plus",18)} Foto hinzufügen</button>""", """    sec(8, "abschluss", "Abschluss", `
+      <div class="group">
+        ${textareaField("Allgemeine Bemerkung", "abschluss.bemerkung", {placeholder:"Alle Notizen zu diesem Termin …"})}
+      </div>
+      <div class="group-label">Im Angebot berücksichtigen</div>
+      <div class="group">
+        ${multiChipField("Nur für dich – erscheint nicht im PDF", "abschluss.angebot", ANGEBOT_POSITIONEN)}
+      </div>
+      <div class="group-label">Weitere Fotos</div>
+      ${S.zusatzbilder.length ? `<div class="group">${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Bild ${i+1}`, false)).join("")}</div>` : ""}
+      <button class="ghost-btn" onclick="addExtraPhoto()">${icon("plus",18)} Foto hinzufügen</button>""")
+
+# PDF
+rep("""      ["Traufhöhe", r.traufe8],""", """      ["Traufhöhe", r.traufhoehe ? String(r.traufhoehe).replace(".", ",") + " m" : r.traufe8],""")
+rep("""    {label:"Übersicht", url:d.elektro.zaehler.uebersicht},
+    {label:"Ohne Abdeckungen\"""", """    {label:"Raumübersicht", url:d.elektro.zaehler.raumuebersicht},
+    {label:"Übersicht", url:d.elektro.zaehler.uebersicht},
+    {label:"Ohne Abdeckungen\"""")
+rep("""  kv("Fundamenterder", d.elektro.hausanschluss.fundamenterder);
+  await photoGrid([{label:"Fundamenterder", url:d.elektro.hausanschluss.fundamenterderFoto}]);""", """  kv("Tiefenerder", d.elektro.hausanschluss.fundamenterder);
+  await photoGrid([{label:"Tiefenerder", url:d.elektro.hausanschluss.fundamenterderFoto}]);""")
+rep('const KOMP_LABELS = { hybrid:"Wechselrichter", batterie:"Batteriespeicher", notstrom:"Notstrom" };',
+    'const KOMP_LABELS = { hybrid:"Wechselrichter + Speicher", batterie:"Batteriespeicher", notstrom:"Notstrom" };')
+rep("""    {label:"Montageort Wechselrichter", url:d.elektro.fotoWechselrichter},""", """    {label:"Montageort Wechselrichter + Speicher", url:d.elektro.fotoWechselrichter},""")
+rep("""  /* Weitere Fotos */
+  const extra =""", """  /* Allgemeine Bemerkung (Angebots-Positionen sind nur intern und kommen nicht ins PDF) */
+  if(d.abschluss && d.abschluss.bemerkung){
+    sectionHeader("BEMERKUNG", PDF_BLUE_DEEP);
+    kvGroup([["Bemerkung", d.abschluss.bemerkung]]);
+    y += 3;
+  }
+
+  /* Weitere Fotos */
+  const extra =""")
+# Foto-Export & Text-Zusammenfassung
+rep("""  add("Zählerschrank Übersicht", z.uebersicht);""", """  add("Raumübersicht", z.raumuebersicht);
+  add("Zählerschrank Übersicht", z.uebersicht);""")
+rep("""  add("Fundamenterder", h.fundamenterderFoto);""", """  add("Tiefenerder", h.fundamenterderFoto);""")
+rep("""  add("Montageort Wechselrichter", e.fotoWechselrichter);""", """  add("Montageort Wechselrichter Speicher", e.fotoWechselrichter);""")
+rep("Traufhöhe: ${r.traufe8||\"-\"}", "Traufhöhe: ${r.traufhoehe ? r.traufhoehe + \" m\" : (r.traufe8||\"-\")}")
+rep("| Fundamenterder: ${d.elektro.hausanschluss.fundamenterder", "| Tiefenerder: ${d.elektro.hausanschluss.fundamenterder")
 
 open(dst, "w", encoding="utf-8").write(s)
 print("geschrieben:", dst, len(s)//1024, "KB", "(Testversion)" if PREVIEW else "")

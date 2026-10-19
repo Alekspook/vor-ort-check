@@ -670,7 +670,7 @@ function emptyRoof(){
     regenrinne:"", regenrinneMaterial:"", drohnenFotos:[null,null,null], bemerkung1:"",
     dachaufbau:"", dcLeitungsweg:"", dcFotos:[null,null],
     wanddurchbrueche:"", wanddurchbruecheFotos:[null,null,null],
-    traufe8:"", geruest:"", geruestBemerkung:""
+    traufe8:"", traufhoehe:"", geruest:"", geruestBemerkung:""
   };
 }
 function freshState(){
@@ -683,7 +683,7 @@ function freshState(){
     daecher:[ emptyRoof() ],
     elektro:{
       stromverbrauch:"", grossverbraucher:{ waermepumpe:"", eauto:"", sauna:"", pool:"" },
-      zaehler:{ uebersicht:null, ohneAbdeckungen:null, typenschild:null, vorsicherung:null, anschlussbereich:null, verteilerfeld1:null, verteilerfeld2:null,
+      zaehler:{ raumuebersicht:null, uebersicht:null, ohneAbdeckungen:null, typenschild:null, vorsicherung:null, anschlussbereich:null, verteilerfeld1:null, verteilerfeld2:null,
         neuerZaehlerschrank:"", weitereUV:"", weitereUVFoto:null, neueUV:"", neueUVFoto:null, wanddurchbrueche:"", wanddurchbruecheFoto1:null, wanddurchbruecheFoto2:null },
       hausanschluss:{ typ:"", potenzialausgleich:"", potenzialausgleichFoto:null, fundamenterder:"", fundamenterderFoto:null, foto:null, bemerkung:"" },
       waermepumpe:"", fotoWPTypenschild:null, fotoWPZaehler:null,
@@ -694,10 +694,43 @@ function freshState(){
       montageortBemerkung:"", messkonzept:""
     },
     zusatzbilder:[],
+    abschluss:{ bemerkung:"", angebot:[] },
     email:{ weitere:"", betreff:"Bestandsaufnahme Protokoll DWB-Energie", nachricht:"" }
   };
 }
 let S = null;
+
+/* Alte Antworten auf die neuen, kürzeren Begriffe umstellen (beim Laden, nicht gespeichert
+   bis zur nächsten Änderung). Felder, die es nicht mehr gibt, bleiben in den Daten erhalten. */
+const VALUE_RENAMES = {
+  janein: { "vorhanden":"Ja", "nicht vorhanden":"Nein" },
+  erforderlich: { "erforderlich":"Ja", "nicht erforderlich":"Nein" },
+  kabelweg: { "vorh. Leerrohr":"Leerrohr", "alter Kaminschacht":"Kaminschacht", "Fassade im Alurohr":"Alurohr Fassade" },
+  geruest: { "muss geprüft werden":"Prüfen", "Kunde stellt Gerüst":"Stellt Kunde" },
+  zaehlerschrank: { "Erforderlich":"Ja", "nicht erforderlich":"Nein", "muss geprüft werden":"Prüfen" },
+  ha: { "HA-Innen":"Innen", "HA-Außen":"Außen", "kein eigener HA vorhanden":"Kein eigener" },
+  wp: { "vorhanden":"Vorhanden", "nicht vorhanden":"Keine", "geplant":"Geplant" },
+  wallbox: { "vorhanden":"Vorhanden", "nicht vorhanden":"Keine", "gewünscht":"Gewünscht" },
+  messkonzept: { "keine Änderung":"Keine Änderung" }
+};
+function normalizeRecordData(d){
+  if(!d || typeof d !== "object") return d;
+  const map = (obj, key, table)=>{ if(obj && typeof obj[key] === "string" && Object.prototype.hasOwnProperty.call(table, obj[key])) obj[key] = table[obj[key]]; };
+  const R = VALUE_RENAMES;
+  (d.daecher || []).forEach(r=>{
+    map(r, "dcLeitungsweg", R.kabelweg); map(r, "regenrinne", R.janein); map(r, "geruest", R.geruest);
+    if(r.traufhoehe === undefined) r.traufhoehe = "";
+  });
+  const e = d.elektro || {}, z = e.zaehler || {}, h = e.hausanschluss || {};
+  map(z, "neuerZaehlerschrank", R.zaehlerschrank); map(z, "weitereUV", R.janein); map(z, "neueUV", R.erforderlich); map(z, "wanddurchbrueche", R.erforderlich);
+  if(e.zaehler && z.raumuebersicht === undefined) z.raumuebersicht = null;
+  map(h, "typ", R.ha); map(h, "potenzialausgleich", R.janein); map(h, "fundamenterder", R.janein);
+  map(e, "waermepumpe", R.wp); map(e, "wallbox", R.wallbox); map(e, "messkonzept", R.messkonzept);
+  if(!d.abschluss || typeof d.abschluss !== "object") d.abschluss = { bemerkung:"", angebot:[] };
+  if(!Array.isArray(d.abschluss.angebot)) d.abschluss.angebot = [];
+  if(typeof d.abschluss.bemerkung !== "string") d.abschluss.bemerkung = "";
+  return d;
+}
 
 function cryptoId(){ return Math.random().toString(36).slice(2,9); }
 function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
@@ -871,7 +904,7 @@ async function loadRecords(){
   const keys = new Set();
   rows.forEach(row=> collectPhotoKeys(row.data, keys));
   const out = rows.map(row=>{
-    const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: row.data };
+    const r = { id: row.id, status: row.status, updatedAt: row.updatedAt, data: normalizeRecordData(row.data) };
     if(row.backedUpAt) r.backedUpAt = row.backedUpAt;
     if(row.pdfExportedAt !== undefined) r.pdfExportedAt = row.pdfExportedAt;
     persistedSig.set(r.id, recordSig(r));
@@ -887,6 +920,7 @@ async function migrateLegacyRecords(){
   if(!legacy){ try{ legacy = JSON.parse(localStorage.getItem(RECORDS_KEY) || "null"); }catch(e){} }
   if(!legacy || !legacy.length) return [];
   records = legacy;
+  legacy.forEach(r=> normalizeRecordData(r.data));
   // Alten Gesamtwert erst löschen, wenn alles im neuen Aufbau sicher gespeichert ist.
   if(await saveRecords()){
     try{ await idbDel(RECORDS_KEY); }catch(e){}
@@ -1008,7 +1042,7 @@ function sectionDone(id){
   switch(id){
     case "kunde": return !!(k.nachname && k.email && st.strasse && st.nr && st.plz && st.ort);
     case "verbrauch": return !!e.stromverbrauch;
-    case "dach": return !!S.gebaeude.kategorie && S.daecher.every(r=> r.dachart && roofHasPhoto(r) && r.dcLeitungsweg && r.traufe8 && r.geruest);
+    case "dach": return !!S.gebaeude.kategorie && S.daecher.every(r=> r.dachart && roofHasPhoto(r) && r.dcLeitungsweg && (r.traufhoehe || r.traufe8) && r.geruest);
     case "zaehler": return !!(e.zaehler.uebersicht && e.zaehler.neuerZaehlerschrank);
     case "ha": return !!e.hausanschluss.typ;
     case "wp": return !!(e.waermepumpe && e.wallbox);
@@ -1423,6 +1457,39 @@ function kwhField(label, path){
         oninput="setPath(S,'${path}', this.value); scheduleAutosave(); updateVerbrauchTotal();"><em>kWh/Jahr</em></span>
     </label>`;
 }
+function meterField(label, path, legacy){
+  const val = getPath(S, path) ?? "";
+  return `
+    <label class="row row-input" id="${domId(path)}">
+      <span class="row-label">${label}</span>
+      <span class="input-unit"><input type="text" inputmode="decimal" value="${escapeAttr(val)}" placeholder="${legacy ? "bisher: " + escapeAttr(legacy) : "z. B. 4,73"}"
+        oninput="setPath(S,'${path}', this.value); scheduleAutosave();"><em>m</em></span>
+    </label>`;
+}
+function toggleInList(path, value, on){
+  const list = (getPath(S, path) || []).filter(v=> v !== value);
+  if(on) list.push(value);
+  setPath(S, path, list);
+  scheduleAutosave();
+  render();
+}
+function multiChipField(label, path, options){
+  const vals = getPath(S, path) || [];
+  return `
+    <div class="row row-choice" id="${domId(path)}" aria-label="${escapeAttr(label)}">
+      <span class="row-label">${label}</span>
+      <div class="chips">
+        ${options.map(o=>`
+          <label class="chip ${vals.includes(o) ? "checked" : ""}">
+            <input type="checkbox" ${vals.includes(o) ? "checked" : ""} onchange="toggleInList('${path}','${escapeAttr(o)}', this.checked)">
+            <span>${o}</span>
+          </label>`).join("")}
+      </div>
+    </div>`;
+}
+// Einzel-Bemerkungen gibt es nicht mehr; alte Inhalte bleiben sichtbar und bearbeitbar.
+function legacyNote(label, path){ return getPath(S, path) ? textareaField(label + " (alt)", path) : ""; }
+const ANGEBOT_POSITIONEN = ["Tiefenerder", "Notstrom", "Wallbox", "Neuer Zählerschrank", "Unterverteilung", "Gerüst", "Wanddurchbrüche"];
 function verbrauchTotal(){
   const g = S.elektro.grossverbraucher;
   return [S.elektro.stromverbrauch, g.waermepumpe, g.eauto, g.sauna, g.pool]
@@ -1567,12 +1634,13 @@ function renderAllSections(){
       ${renderRoofs()}`, "DC"),
     sec(4, "zaehler", "Zählerschrank", `
       <div class="group">
-        ${radioField("Neuer Zählerschrank", "elektro.zaehler.neuerZaehlerschrank", ["Erforderlich","nicht erforderlich","muss geprüft werden"])}
+        ${radioField("Neuer Zählerschrank nötig?", "elektro.zaehler.neuerZaehlerschrank", ["Ja","Nein","Prüfen"])}
       </div>
       <div class="group-label">Fotos</div>
       <div class="group">
-        ${photoSlot("elektro.zaehler.uebersicht","Übersicht", true)}
-        ${photoSlot("elektro.zaehler.ohneAbdeckungen","Ohne Abdeckungen", false)}
+        ${photoSlot("elektro.zaehler.raumuebersicht","Raumübersicht", false)}
+        ${photoSlot("elektro.zaehler.uebersicht","Übersicht Zählerschrank", true)}
+        ${z.ohneAbdeckungen ? photoSlot("elektro.zaehler.ohneAbdeckungen","Ohne Abdeckungen (alt)", false) : ""}
         ${photoSlot("elektro.zaehler.typenschild","Typenschild", false)}
         ${photoSlot("elektro.zaehler.vorsicherung","Vorsicherung / SLS (unter dem Zähler)", false)}
         ${photoSlot("elektro.zaehler.anschlussbereich","Anschlussbereich (über dem Zähler)", false)}
@@ -1581,53 +1649,61 @@ function renderAllSections(){
       </div>
       <div class="group-label">Verteilungen</div>
       <div class="group">
-        ${radioField("Weitere Unterverteilungen", "elektro.zaehler.weitereUV", ["vorhanden","nicht vorhanden"])}
-        ${z.weitereUV === "vorhanden" ? `<div class="conditional">${photoSlot("elektro.zaehler.weitereUVFoto","Foto weitere Unterverteilung", false)}</div>` : ""}
-        ${radioField("Neue Unterverteilung", "elektro.zaehler.neueUV", ["erforderlich","nicht erforderlich"])}
-        ${z.neueUV === "erforderlich" ? `<div class="conditional">${photoSlot("elektro.zaehler.neueUVFoto","Foto neue Unterverteilung", false)}</div>` : ""}
-        ${radioField("Wanddurchbrüche", "elektro.zaehler.wanddurchbrueche", ["erforderlich","nicht erforderlich"])}
-        ${z.wanddurchbrueche === "erforderlich" ? `<div class="conditional">
+        ${radioField("Weitere Unterverteilung vorhanden?", "elektro.zaehler.weitereUV", ["Ja","Nein"])}
+        ${z.weitereUV === "Ja" ? `<div class="conditional">${photoSlot("elektro.zaehler.weitereUVFoto","Foto weitere Unterverteilung", false)}</div>` : ""}
+        ${radioField("Neue Unterverteilung nötig?", "elektro.zaehler.neueUV", ["Ja","Nein"])}
+        ${z.neueUV === "Ja" ? `<div class="conditional">${photoSlot("elektro.zaehler.neueUVFoto","Foto neue Unterverteilung", false)}</div>` : ""}
+        ${radioField("Wanddurchbrüche nötig?", "elektro.zaehler.wanddurchbrueche", ["Ja","Nein"])}
+        ${z.wanddurchbrueche === "Ja" ? `<div class="conditional">
           ${photoSlot("elektro.zaehler.wanddurchbruecheFoto1","Foto Wanddurchbruch 1", false)}
           ${photoSlot("elektro.zaehler.wanddurchbruecheFoto2","Foto Wanddurchbruch 2", false)}
         </div>` : ""}
       </div>`, "AC"),
     sec(5, "ha", "Hausanschluss", `
       <div class="group">
-        ${radioField("Hausanschluss", "elektro.hausanschluss.typ", ["HA-Innen","HA-Außen","kein eigener HA vorhanden"], {required:true})}
+        ${radioField("Lage Hausanschluss", "elektro.hausanschluss.typ", ["Innen","Außen","Kein eigener"], {required:true})}
         ${photoSlot("elektro.hausanschluss.foto","Übersichtsfoto", false)}
-        ${radioField("Potenzialausgleichsschiene", "elektro.hausanschluss.potenzialausgleich", ["vorhanden","nicht vorhanden"])}
-        ${h.potenzialausgleich === "vorhanden" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.potenzialausgleichFoto","Foto Potenzialausgleichsschiene", false)}</div>` : ""}
-        ${radioField("Fundamenterder", "elektro.hausanschluss.fundamenterder", ["vorhanden","nicht vorhanden"])}
-        ${h.fundamenterder === "vorhanden" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.fundamenterderFoto","Foto Fundamenterder", false)}</div>` : ""}
-        ${textareaField("Bemerkungen", "elektro.hausanschluss.bemerkung")}
+        ${radioField("Potenzialausgleichsschiene vorhanden?", "elektro.hausanschluss.potenzialausgleich", ["Ja","Nein"])}
+        ${h.potenzialausgleich === "Ja" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.potenzialausgleichFoto","Foto Potenzialausgleichsschiene", false)}</div>` : ""}
+        ${radioField("Tiefenerder vorhanden?", "elektro.hausanschluss.fundamenterder", ["Ja","Nein"])}
+        ${h.fundamenterder === "Ja" ? `<div class="conditional">${photoSlot("elektro.hausanschluss.fundamenterderFoto","Foto Tiefenerder", false)}</div>` : ""}
+        ${legacyNote("Bemerkungen", "elektro.hausanschluss.bemerkung")}
       </div>`, "AC"),
     sec(6, "wp", "Wärmepumpe &amp; Wallbox", `
       <div class="group">
-        ${radioField("Wärmepumpe", "elektro.waermepumpe", ["vorhanden","nicht vorhanden","geplant"])}
-        ${e.waermepumpe === "vorhanden" ? `<div class="conditional">
+        ${radioField("Wärmepumpe", "elektro.waermepumpe", ["Vorhanden","Keine","Geplant"])}
+        ${e.waermepumpe === "Vorhanden" ? `<div class="conditional">
           ${photoSlot("elektro.fotoWPTypenschild","Foto Typenschild Wärmepumpe", false)}
           ${photoSlot("elektro.fotoWPZaehler","Foto Wärmepumpenzähler", false)}
         </div>` : ""}
-        ${radioField("Wallbox", "elektro.wallbox", ["vorhanden","nicht vorhanden","gewünscht"])}
-        ${e.wallbox === "vorhanden" ? `<div class="conditional">${photoSlot("elektro.fotoWallboxTypenschild","Foto Wallbox Typenschild", false)}</div>` : ""}
-        ${e.wallbox === "gewünscht" ? `<div class="conditional">${photoSlot("elektro.fotoWallboxStandort","Foto Wallbox Standortwunsch", false)}</div>` : ""}
-        ${radioField("Sind Durchbrüche notwendig?", "elektro.wallboxDurchbrueche", ["Ja","Nein"])}
+        ${radioField("Wallbox", "elektro.wallbox", ["Vorhanden","Keine","Gewünscht"])}
+        ${e.wallbox === "Vorhanden" ? `<div class="conditional">${photoSlot("elektro.fotoWallboxTypenschild","Foto Wallbox Typenschild", false)}</div>` : ""}
+        ${e.wallbox === "Gewünscht" ? `<div class="conditional">${photoSlot("elektro.fotoWallboxStandort","Foto Wallbox Standortwunsch", false)}</div>` : ""}
+        ${radioField("Durchbrüche nötig?", "elektro.wallboxDurchbrueche", ["Ja","Nein"])}
         ${e.wallboxDurchbrueche === "Ja" ? `<div class="conditional">${photoSlot("elektro.fotoWallboxDurchbruch","Foto Kabelweg / Durchbruch", false)}</div>` : ""}
       </div>`, "AC"),
     sec(7, "hardware", "Hardware &amp; Messkonzept", `
       <div class="group">
-        ${checkField("Wechselrichter", "elektro.komponenten.hybrid")}
-        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter", false)}</div>` : ""}
-        ${checkField("Batteriespeicher", "elektro.komponenten.batterie")}
-        ${e.komponenten.batterie ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher", false)}</div>` : ""}
+        ${checkField("Wechselrichter + Speicher (Turm)", "elektro.komponenten.hybrid")}
+        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}
+        ${e.komponenten.batterie || e.fotoSpeicher ? checkField("Batteriespeicher separat (alt)", "elektro.komponenten.batterie") : ""}
+        ${e.komponenten.batterie && e.fotoSpeicher !== undefined ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (alt)", false)}</div>` : ""}
         ${checkField("Notstrom", "elektro.komponenten.notstrom")}
-        ${textareaField("Bemerkung", "elektro.montageortBemerkung")}
+        ${legacyNote("Bemerkung", "elektro.montageortBemerkung")}
       </div>
       <div class="group-label">Messkonzept</div>
       <div class="group">
-        ${radioField("Zähler-Messkonzept", "elektro.messkonzept", ["keine Änderung","Zusammenlegung","Kaskade"], {required:true})}
+        ${radioField("Zähler-Messkonzept", "elektro.messkonzept", ["Keine Änderung","Zusammenlegung","Kaskade"], {required:true})}
       </div>`, "AC"),
-    sec(8, "abschluss", "Weitere Fotos", `
+    sec(8, "abschluss", "Abschluss", `
+      <div class="group">
+        ${textareaField("Allgemeine Bemerkung", "abschluss.bemerkung", {placeholder:"Alle Notizen zu diesem Termin …"})}
+      </div>
+      <div class="group-label">Im Angebot berücksichtigen</div>
+      <div class="group">
+        ${multiChipField("Nur für dich – erscheint nicht im PDF", "abschluss.angebot", ANGEBOT_POSITIONEN)}
+      </div>
+      <div class="group-label">Weitere Fotos</div>
       ${S.zusatzbilder.length ? `<div class="group">${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Bild ${i+1}`, false)).join("")}</div>` : ""}
       <button class="ghost-btn" onclick="addExtraPhoto()">${icon("plus",18)} Foto hinzufügen</button>
       <div class="note" style="margin:14px 4px 0;">„Abschließen" verschiebt den Vor-Ort-Check nach Abgeschlossen. Das PDF erstellst du oben rechts oder in der Liste.</div>`)
@@ -1640,24 +1716,24 @@ function renderRoofs(){
     <div class="group">
       ${radioField("Art", `daecher.${i}.dachart`, ["Schrägdach","Flachdach","Blechdach","Carport","Sonstige"], {required:true})}
       ${radioField("Eindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Blechfalz","Sonstige"])}
-      ${radioField("Regenrinne", `daecher.${i}.regenrinne`, ["vorhanden","nicht vorhanden"])}
-      ${d.regenrinne === "vorhanden" ? `<div class="conditional">${radioField("Material Regenrinne", `daecher.${i}.regenrinneMaterial`, ["Zink","Kupfer","Kunststoff"])}</div>` : ""}
-      ${textareaField("Bemerkungen", `daecher.${i}.bemerkung1`)}
+      ${radioField("Regenrinne vorhanden?", `daecher.${i}.regenrinne`, ["Ja","Nein"])}
+      ${d.regenrinne === "Ja" ? `<div class="conditional">${radioField("Material Regenrinne", `daecher.${i}.regenrinneMaterial`, ["Zink","Kupfer","Kunststoff"])}</div>` : ""}
+      ${legacyNote("Bemerkungen", `daecher.${i}.bemerkung1`)}
       ${roofPhotoGrid(i)}
-      ${radioField("Kabelweg", `daecher.${i}.dcLeitungsweg`, ["vorh. Leerrohr","alter Kaminschacht","Fassade im Alurohr","Sonstige"])}
+      ${radioField("Kabelweg", `daecher.${i}.dcLeitungsweg`, ["Leerrohr","Kaminschacht","Alurohr Fassade","Sonstige"])}
       ${d.dcLeitungsweg ? `<div class="conditional">
         ${photoSlot(`daecher.${i}.dcFotos.0`, "Kabelweg Bild 1", true)}
         ${photoSlot(`daecher.${i}.dcFotos.1`, "Kabelweg Bild 2", false)}
       </div>` : ""}
-      ${radioField("Wanddurchbrüche notwendig", `daecher.${i}.wanddurchbrueche`, ["Ja","Nein"])}
+      ${radioField("Wanddurchbrüche nötig?", `daecher.${i}.wanddurchbrueche`, ["Ja","Nein"])}
       ${d.wanddurchbrueche === "Ja" ? `<div class="conditional">
         ${photoSlot(`daecher.${i}.wanddurchbruecheFotos.0`, "Foto Wanddurchbruch 1", false)}
         ${photoSlot(`daecher.${i}.wanddurchbruecheFotos.1`, "Foto Wanddurchbruch 2", false)}
         ${photoSlot(`daecher.${i}.wanddurchbruecheFotos.2`, "Foto Wanddurchbruch 3", false)}
       </div>` : ""}
-      ${radioField("Traufhöhe", `daecher.${i}.traufe8`, ["über 5m","unter 5m"])}
-      ${radioField("Gerüst erforderlich", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","muss geprüft werden","Kunde stellt Gerüst"])}
-      ${textareaField("Bemerkungen Gerüst", `daecher.${i}.geruestBemerkung`)}
+      ${meterField("Traufhöhe", `daecher.${i}.traufhoehe`, d.traufe8)}
+      ${radioField("Gerüst nötig?", `daecher.${i}.geruest`, ["Ja","Nein","Fallschutz reicht","Prüfen","Stellt Kunde"])}
+      ${legacyNote("Bemerkungen Gerüst", `daecher.${i}.geruestBemerkung`)}
     </div>
   `).join("");
   return cards + `<button class="ghost-btn" onclick="addRoof()">${icon("plus",18)} Weiteres Dach</button>`;
@@ -2028,12 +2104,12 @@ function buildTextSummary(d){
   t += `STANDORT\n${[d.standort.strasse,d.standort.nr].filter(Boolean).join(" ")}, ${d.standort.plz} ${d.standort.ort}\n\n`;
   t += `DC\nKategorie: ${d.gebaeude.kategorie}\nBesonderheiten: ${d.gebaeude.besonderheiten||"-"}\n\n`;
   d.daecher.forEach((r,i)=>{
-    t += `DACH ${i+1}\nArt: ${r.dachart||"-"}\nEindeckung: ${r.dachaufbau||"-"}\nKabelweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nTraufhöhe: ${r.traufe8||"-"} | Gerüst erforderlich: ${r.geruest||"-"}\n\n`;
+    t += `DACH ${i+1}\nArt: ${r.dachart||"-"}\nEindeckung: ${r.dachaufbau||"-"}\nKabelweg: ${r.dcLeitungsweg||"-"} | Wanddurchbrüche: ${r.wanddurchbrueche||"-"}\nTraufhöhe: ${r.traufhoehe ? r.traufhoehe + " m" : (r.traufe8||"-")} | Gerüst erforderlich: ${r.geruest||"-"}\n\n`;
   });
   const g = d.elektro.grossverbraucher||{};
   const gesamtverbrauch = [d.elektro.stromverbrauch, g.waermepumpe, g.eauto, g.sauna, g.pool].map(v=>parseFloat(v)||0).reduce((a,b)=>a+b,0);
   t += `VERBRAUCH\nHausstromverbrauch: ${d.elektro.stromverbrauch||"-"} kWh/Jahr\nWärmepumpe: ${g.waermepumpe||"-"} kWh/Jahr | E-Auto: ${g.eauto||"-"} kWh/Jahr | Sauna: ${g.sauna||"-"} kWh/Jahr | Pool: ${g.pool||"-"} kWh/Jahr\nGesamtverbrauch: ${gesamtverbrauch||"-"} kWh/Jahr\n\n`;
-  t += `AC\nHausanschluss: ${d.elektro.hausanschluss.typ||"-"}\nPotenzialausgleichsschiene: ${d.elektro.hausanschluss.potenzialausgleich||"-"} | Fundamenterder: ${d.elektro.hausanschluss.fundamenterder||"-"}\nWärmepumpe: ${d.elektro.waermepumpe||"-"} | Wallbox: ${d.elektro.wallbox||"-"}\nHardware: ${Object.entries(d.elektro.komponenten).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ")||"-"}\nMesskonzept: ${d.elektro.messkonzept||"-"}\n`;
+  t += `AC\nHausanschluss: ${d.elektro.hausanschluss.typ||"-"}\nPotenzialausgleichsschiene: ${d.elektro.hausanschluss.potenzialausgleich||"-"} | Tiefenerder: ${d.elektro.hausanschluss.fundamenterder||"-"}\nWärmepumpe: ${d.elektro.waermepumpe||"-"} | Wallbox: ${d.elektro.wallbox||"-"}\nHardware: ${Object.entries(d.elektro.komponenten).filter(([k,v])=>v).map(([k])=>KOMP_LABELS[k]||k).join(", ")||"-"}\nMesskonzept: ${d.elektro.messkonzept||"-"}\n`;
   return t;
 }
 function formatDateDE(iso){
@@ -2072,6 +2148,7 @@ function recordPhotoList(d){
     (r.wanddurchbruecheFotos||[]).forEach((u,k)=> add(`${p}Wanddurchbruch ${k+1}`, u));
   });
   const e = d.elektro, z = e.zaehler, h = e.hausanschluss;
+  add("Raumübersicht", z.raumuebersicht);
   add("Zählerschrank Übersicht", z.uebersicht);
   add("Zählerschrank ohne Abdeckungen", z.ohneAbdeckungen);
   add("Zählerschrank Typenschild", z.typenschild);
@@ -2085,13 +2162,13 @@ function recordPhotoList(d){
   add("Zählerschrank Wanddurchbruch 2", z.wanddurchbruecheFoto2);
   add("Hausanschluss", h.foto);
   add("Potenzialausgleichsschiene", h.potenzialausgleichFoto);
-  add("Fundamenterder", h.fundamenterderFoto);
+  add("Tiefenerder", h.fundamenterderFoto);
   add("Wärmepumpe Typenschild", e.fotoWPTypenschild);
   add("Wärmepumpenzähler", e.fotoWPZaehler);
   add("Wallbox Typenschild", e.fotoWallboxTypenschild);
   add("Wallbox Standortwunsch", e.fotoWallboxStandort);
   add("Wallbox Kabelweg Durchbruch", e.fotoWallboxDurchbruch);
-  add("Montageort Wechselrichter", e.fotoWechselrichter);
+  add("Montageort Wechselrichter Speicher", e.fotoWechselrichter);
   add("Montageort Batteriespeicher", e.fotoSpeicher);
   (d.zusatzbilder||[]).forEach((u,k)=> add(`Weiteres Bild ${k+1}`, u));
   // Sicherheitsnetz: Fotos aus Feldern, die oben (noch) nicht aufgeführt sind, nie verschlucken.
@@ -2402,7 +2479,7 @@ async function restoreFromBackup(){
     let done = 0;
     for(const row of missing){
       backupRestoreProgress = `Stelle wieder her… ${done+1} von ${missing.length}`; render();
-      const data = await unpackPhotos(row.data);
+      const data = normalizeRecordData(await unpackPhotos(row.data));
       const restored = { id: row.id, status: row.status, updatedAt: row.updated_at, backedUpAt: row.updated_at, data };
       records.push(restored);
       await saveRecords();
@@ -2541,7 +2618,7 @@ if(supabaseClient){
 window.addEventListener("online", ()=> scheduleBackup(1000));
 
 const PDF_INK = [22,58,87], PDF_INK_SOFT = [92,124,147], PDF_BLUE = [46,155,224], PDF_BLUE_DEEP = [28,126,192], PDF_LINE = [211,231,245], PDF_PAPER = [234,246,253], PDF_RED = [225,82,82];
-const KOMP_LABELS = { hybrid:"Wechselrichter", batterie:"Batteriespeicher", notstrom:"Notstrom" };
+const KOMP_LABELS = { hybrid:"Wechselrichter + Speicher", batterie:"Batteriespeicher", notstrom:"Notstrom" };
 const BERATER_TELEFON = "01795230595";
 
 async function buildPDF(d){
@@ -2742,7 +2819,7 @@ async function buildPDF(d){
       {label:"Wanddurchbruch 3", url:r.wanddurchbruecheFotos[2]}
     ]);
     kvGroup([
-      ["Traufhöhe", r.traufe8],
+      ["Traufhöhe", r.traufhoehe ? String(r.traufhoehe).replace(".", ",") + " m" : r.traufe8],
       ["Gerüst erforderlich", r.geruest],
       ["Bemerkungen Gerüst", r.geruestBemerkung]
     ]);
@@ -2814,6 +2891,7 @@ async function buildPDF(d){
   sectionHeader("AC – ZÄHLERSCHRANK", PDF_BLUE_DEEP);
   kv("Neuer Zählerschrank", d.elektro.zaehler.neuerZaehlerschrank);
   const zaehlerFotos = [
+    {label:"Raumübersicht", url:d.elektro.zaehler.raumuebersicht},
     {label:"Übersicht", url:d.elektro.zaehler.uebersicht},
     {label:"Ohne Abdeckungen", url:d.elektro.zaehler.ohneAbdeckungen},
     {label:"Typenschild", url:d.elektro.zaehler.typenschild},
@@ -2843,8 +2921,8 @@ async function buildPDF(d){
   await photoGrid([{label:"Übersicht", url:d.elektro.hausanschluss.foto}]);
   kv("Potenzialausgleichsschiene", d.elektro.hausanschluss.potenzialausgleich);
   await photoGrid([{label:"Potenzialausgleichsschiene", url:d.elektro.hausanschluss.potenzialausgleichFoto}]);
-  kv("Fundamenterder", d.elektro.hausanschluss.fundamenterder);
-  await photoGrid([{label:"Fundamenterder", url:d.elektro.hausanschluss.fundamenterderFoto}]);
+  kv("Tiefenerder", d.elektro.hausanschluss.fundamenterder);
+  await photoGrid([{label:"Tiefenerder", url:d.elektro.hausanschluss.fundamenterderFoto}]);
   kv("Bemerkungen", d.elektro.hausanschluss.bemerkung);
   y += 3;
 
@@ -2871,9 +2949,16 @@ async function buildPDF(d){
     ["Bemerkung", d.elektro.montageortBemerkung],
     ["Messkonzept", d.elektro.messkonzept]
   ], [
-    {label:"Montageort Wechselrichter", url:d.elektro.fotoWechselrichter},
+    {label:"Montageort Wechselrichter + Speicher", url:d.elektro.fotoWechselrichter},
     {label:"Montageort Batteriespeicher", url:d.elektro.fotoSpeicher}
   ]);
+
+  /* Allgemeine Bemerkung (Angebots-Positionen sind nur intern und kommen nicht ins PDF) */
+  if(d.abschluss && d.abschluss.bemerkung){
+    sectionHeader("BEMERKUNG", PDF_BLUE_DEEP);
+    kvGroup([["Bemerkung", d.abschluss.bemerkung]]);
+    y += 3;
+  }
 
   /* Weitere Fotos */
   const extra = (d.zusatzbilder||[]).map((f,i)=>({label:`Bild ${i+1}`, url:f})).filter(p=>p.url);
@@ -3012,25 +3097,27 @@ function seedDemoRecords(){
     mk("Lena", "Hoffmann", "Frau", "Lindenallee", "12", "14641", "Nauen", "draft", 0, d=>{
       d.gebaeude.kategorie = "Einfamilienhaus";
       d.elektro.stromverbrauch = "4200"; d.elektro.grossverbraucher.eauto = "2500";
-      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "vorhanden", regenrinneMaterial: "Zink", dcLeitungsweg: "alter Kaminschacht", traufe8: "unter 5m" });
+      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "Ja", regenrinneMaterial: "Zink", dcLeitungsweg: "Kaminschacht", traufhoehe: "4,73" });
       d.daecher[0].fotos[0] = demoPhoto("Dach Süd", 20, 200); d.daecher[0].fotos[1] = demoPhoto("Dach Ost", 35, 210); d.daecher[0].drohnenFotos[0] = demoPhoto("Drohne", 190, 230);
       d.daecher[0].dcFotos[0] = demoPhoto("Kaminschacht", 25, 15);
-      d.elektro.zaehler.neuerZaehlerschrank = "muss geprüft werden";
+      d.elektro.zaehler.neuerZaehlerschrank = "Prüfen";
+      d.abschluss.bemerkung = "Kundin möchte Speicher im Keller, Termin für Angebot nächste Woche.";
+      d.abschluss.angebot = ["Tiefenerder", "Wallbox"];
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 170, 200);
     }),
     mk("Jonas", "Weber", "Herr", "Am Mühlenberg", "3", "14712", "Rathenow", "fertig", 2, d=>{
       d.gebaeude.kategorie = "Reihenhaus"; d.elektro.stromverbrauch = "3600";
-      Object.assign(d.daecher[0], { dachart: "Flachdach", dachaufbau: "Bitumen", dcLeitungsweg: "Fassade im Alurohr", traufe8: "über 5m", geruest: "Ja" });
+      Object.assign(d.daecher[0], { dachart: "Flachdach", dachaufbau: "Bitumen", dcLeitungsweg: "Alurohr Fassade", traufhoehe: "6,10", geruest: "Ja" });
       d.daecher[0].fotos[0] = demoPhoto("Flachdach", 200, 220);
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 160, 190);
-      d.elektro.hausanschluss.typ = "HA-Innen"; d.elektro.messkonzept = "keine Änderung";
+      d.elektro.hausanschluss.typ = "Innen"; d.elektro.messkonzept = "Keine Änderung";
     }),
     mk("", "Familie Schulz", "Familie", "Birkenweg", "7a", "14612", "Falkensee", "fertig", 6, d=>{
       d.gebaeude.kategorie = "Einfamilienhaus"; d.elektro.stromverbrauch = "5100"; d.elektro.grossverbraucher.waermepumpe = "3800";
-      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", dcLeitungsweg: "vorh. Leerrohr", traufe8: "unter 5m", geruest: "Fallschutz reicht" });
+      Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", dcLeitungsweg: "Leerrohr", traufhoehe: "3,90", geruest: "Fallschutz reicht" });
       d.daecher[0].fotos[0] = demoPhoto("Dach", 15, 205);
       d.elektro.zaehler.uebersicht = demoPhoto("Zählerschrank", 150, 200);
-      d.elektro.hausanschluss.typ = "HA-Außen"; d.elektro.messkonzept = "Kaskade";
+      d.elektro.hausanschluss.typ = "Außen"; d.elektro.messkonzept = "Kaskade";
     })
   ];
 }

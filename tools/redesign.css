@@ -224,21 +224,23 @@
   @keyframes rise{from{transform:translateY(12px);opacity:0}}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
-  /* Skizze (unverändert in Funktion, nur neue Farben) */
-  .sketch-modal{position:fixed;inset:0;background:#fff;z-index:100;display:flex;flex-direction:column;}
-  .sketch-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--line);}
-  .sketch-modal-head h2{font-size:16px;margin:0;}
-  .sketch-modal-head button{border:none;background:var(--surface-2);font-size:14px;padding:8px 14px;border-radius:999px;cursor:pointer;}
-  .sketch-canvas-wrap{flex:1;position:relative;background:#fff;touch-action:none;overflow:hidden;}
-  #sketchCanvas{width:100%;height:100%;display:block;touch-action:none;}
-  .sketch-toolbar{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line);overflow-x:auto;}
-  .tool-btn{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;border:none;background:var(--surface-2);color:var(--ink);font-size:13px;font-weight:600;padding:9px 13px;border-radius:999px;cursor:pointer;white-space:nowrap;}
-  .tool-btn.active{background:var(--ink);color:#fff;}
-  .sketch-footer{display:flex;gap:8px;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
-  .sketch-footer button{flex:1;height:50px;border-radius:14px;font-size:16px;font-weight:650;border:none;background:var(--surface-2);cursor:pointer;}
-  .sketch-footer button.save{background:var(--accent);color:#fff;}
-  .sketch-hint{font-size:12.5px;color:var(--ink-3);padding:8px 14px;}
-  .sketch-obj-layer{position:absolute;inset:0;pointer-events:none;}
-  .sketch-obj{position:absolute;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;border:1.5px solid var(--ink);border-radius:5px;pointer-events:auto;touch-action:none;cursor:move;user-select:none;}
-  .sketch-obj .resize-handle{position:absolute;right:-7px;bottom:-7px;width:18px;height:18px;background:var(--ink);border:2px solid #fff;border-radius:50%;cursor:nwse-resize;touch-action:none;}
+  /* Einzeichnen */
+  .sketch-modal{position:fixed;inset:0;background:#111;z-index:100;display:flex;flex-direction:column;color:#fff;}
+  .sketch-modal-head{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));}
+  .sketch-modal-head h2{flex:1;font-size:15px;font-weight:600;margin:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sketch-modal-head button{border:none;background:rgba(255,255,255,.12);color:#fff;font-size:15px;font-weight:600;height:38px;padding:0 15px;border-radius:999px;cursor:pointer;flex-shrink:0;}
+  .sketch-modal-head button.save{background:var(--accent);}
+  .sketch-canvas-wrap{flex:1;position:relative;touch-action:none;overflow:hidden;min-height:0;}
+  #sketchCanvas{display:block;touch-action:none;}
+  .sketch-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:#1A1A1A;}
+  .sk-group{display:flex;gap:6px;align-items:center;}
+  .sk-btn{width:42px;height:42px;border:none;border-radius:12px;background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .sk-btn.active{background:#fff;color:#111;}
+  .sk-btn:disabled{opacity:.3;cursor:default;}
+  .sk-color{width:30px;height:30px;border-radius:50%;border:none;background:var(--c);cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);}
+  .sk-color.active{box-shadow:0 0 0 3px #1A1A1A, 0 0 0 5px #fff;}
+  .sk-size{width:36px;height:36px;border:none;border-radius:10px;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .sk-size i{display:block;border-radius:50%;background:#fff;opacity:.45;}
+  .sk-size.active{background:rgba(255,255,255,.12);}
+  .sk-size.active i{opacity:1;}
 </style>

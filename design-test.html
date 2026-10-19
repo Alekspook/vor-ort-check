@@ -639,23 +639,25 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   @keyframes rise{from{transform:translateY(12px);opacity:0}}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
 
-  /* Skizze (unverändert in Funktion, nur neue Farben) */
-  .sketch-modal{position:fixed;inset:0;background:#fff;z-index:100;display:flex;flex-direction:column;}
-  .sketch-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--line);}
-  .sketch-modal-head h2{font-size:16px;margin:0;}
-  .sketch-modal-head button{border:none;background:var(--surface-2);font-size:14px;padding:8px 14px;border-radius:999px;cursor:pointer;}
-  .sketch-canvas-wrap{flex:1;position:relative;background:#fff;touch-action:none;overflow:hidden;}
-  #sketchCanvas{width:100%;height:100%;display:block;touch-action:none;}
-  .sketch-toolbar{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line);overflow-x:auto;}
-  .tool-btn{flex-shrink:0;display:inline-flex;align-items:center;gap:6px;border:none;background:var(--surface-2);color:var(--ink);font-size:13px;font-weight:600;padding:9px 13px;border-radius:999px;cursor:pointer;white-space:nowrap;}
-  .tool-btn.active{background:var(--ink);color:#fff;}
-  .sketch-footer{display:flex;gap:8px;padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
-  .sketch-footer button{flex:1;height:50px;border-radius:14px;font-size:16px;font-weight:650;border:none;background:var(--surface-2);cursor:pointer;}
-  .sketch-footer button.save{background:var(--accent);color:#fff;}
-  .sketch-hint{font-size:12.5px;color:var(--ink-3);padding:8px 14px;}
-  .sketch-obj-layer{position:absolute;inset:0;pointer-events:none;}
-  .sketch-obj{position:absolute;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;border:1.5px solid var(--ink);border-radius:5px;pointer-events:auto;touch-action:none;cursor:move;user-select:none;}
-  .sketch-obj .resize-handle{position:absolute;right:-7px;bottom:-7px;width:18px;height:18px;background:var(--ink);border:2px solid #fff;border-radius:50%;cursor:nwse-resize;touch-action:none;}
+  /* Einzeichnen */
+  .sketch-modal{position:fixed;inset:0;background:#111;z-index:100;display:flex;flex-direction:column;color:#fff;}
+  .sketch-modal-head{display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));}
+  .sketch-modal-head h2{flex:1;font-size:15px;font-weight:600;margin:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sketch-modal-head button{border:none;background:rgba(255,255,255,.12);color:#fff;font-size:15px;font-weight:600;height:38px;padding:0 15px;border-radius:999px;cursor:pointer;flex-shrink:0;}
+  .sketch-modal-head button.save{background:var(--accent);}
+  .sketch-canvas-wrap{flex:1;position:relative;touch-action:none;overflow:hidden;min-height:0;}
+  #sketchCanvas{display:block;touch-action:none;}
+  .sketch-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:#1A1A1A;}
+  .sk-group{display:flex;gap:6px;align-items:center;}
+  .sk-btn{width:42px;height:42px;border:none;border-radius:12px;background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .sk-btn.active{background:#fff;color:#111;}
+  .sk-btn:disabled{opacity:.3;cursor:default;}
+  .sk-color{width:30px;height:30px;border-radius:50%;border:none;background:var(--c);cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25);}
+  .sk-color.active{box-shadow:0 0 0 3px #1A1A1A, 0 0 0 5px #fff;}
+  .sk-size{width:36px;height:36px;border:none;border-radius:10px;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .sk-size i{display:block;border-radius:50%;background:#fff;opacity:.45;}
+  .sk-size.active{background:rgba(255,255,255,.12);}
+  .sk-size.active i{opacity:1;}
 </style>
 </head>
 <body>
@@ -1570,6 +1572,8 @@ const ICON_PATHS = {
   arrowLeft: '<line x1="19" y1="12" x2="5" y2="12"/><path d="M11 6l-6 6 6 6"/>',
   check: '<path d="M4 12l6 6L20 6"/>',
   undo: '<path d="M3 10h9a5 5 0 0 1 0 10h-4"/><path d="M3 10l4-4"/><path d="M3 10l4 4"/>',
+  redo: '<path d="M21 10h-9a5 5 0 0 0 0 10h4"/><path d="M21 10l-4-4"/><path d="M21 10l-4 4"/>',
+  arrow: '<line x1="5" y1="19" x2="19" y2="5"/><path d="M10 5h9v9"/>',
   battery: '<rect x="3" y="8" width="15" height="8" rx="1.5"/><line x1="20" y1="10.5" x2="20" y2="13.5"/>',
   close: '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
   search: '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
@@ -1814,214 +1818,165 @@ function addRoof(){ S.daecher.push(emptyRoof()); scheduleAutosave(); render(); }
 function removeRoof(i){ S.daecher.splice(i,1); scheduleAutosave(); render(); }
 function addExtraPhoto(){ S.zusatzbilder.push(null); scheduleAutosave(); render(); }
 
-/* ---------- Skizze (Zeichnen auf Foto) ---------- */
-
-let sketchCtx=null, sketchMode="pen", drawing=false;
-let sketchTargetPath="elektro.skizze";
-let sketchStrokes=[], sketchObjects=[], sketchActions=[], sketchCurrentStroke=null;
-let sketchObjIdSeq=0, sketchBgImg=null, sketchW=0, sketchH=0;
-
-const SKETCH_MARKER_PATHS = ["elektro.fotoWechselrichter","elektro.fotoSpeicher"];
+/* ---------- Einzeichnen auf Fotos ----------
+   Striche werden in Bild-Koordinaten gespeichert: Anzeige unverzerrt (eingepasst),
+   Ergebnis in voller Auflösung (max. 2400 px) als JPEG. */
+const SKETCH_COLORS = [["#E53935","Rot"], ["#FFC400","Gelb"], ["#2FA97C","Grün"], ["#FFFFFF","Weiß"]];
+const SKETCH_SIZES = [["dünn",0.004], ["mittel",0.008], ["dick",0.014]];
+let sk = null;
 function openSketchModal(path, label){
-  sketchTargetPath = path || "elektro.skizze";
-  sketchStrokes = []; sketchObjects = []; sketchActions = []; sketchCurrentStroke = null; sketchBgImg = null;
-  const showMarkers = SKETCH_MARKER_PATHS.indexOf(sketchTargetPath) !== -1;
+  const src = getPath(S, path);
+  if(!src) return;
   const modal = document.createElement("div");
   modal.className = "sketch-modal";
   modal.id = "sketchModal";
   modal.innerHTML = `
     <div class="sketch-modal-head">
-      <h2>${label ? escapeHtml(label) : "Auf Foto einzeichnen"}</h2>
-      <button onclick="closeSketchModal()">Schließen</button>
+      <button type="button" onclick="sketchCancel()">Abbrechen</button>
+      <h2>${escapeHtml(label || "Einzeichnen")}</h2>
+      <button type="button" class="save" onclick="saveSketch()">Fertig</button>
     </div>
-    <div class="sketch-hint">${showMarkers ? `Tippe "Speicher setzen" / "Wechselrichter setzen" und dann auf die Fläche. Marker lassen sich anschließend verschieben (ziehen) und am Eckpunkt vergrößern/verkleinern. Mit "Stift" frei zeichnen.` : `Mit dem Stift kannst du direkt auf dem Foto zeichnen, z.B. um eine Stelle zu markieren.`}</div>
-    <div class="sketch-canvas-wrap">
-      <canvas id="sketchCanvas"></canvas>
-      <div class="sketch-obj-layer" id="sketchObjLayer"></div>
-    </div>
+    <div class="sketch-canvas-wrap"><canvas id="sketchCanvas"></canvas></div>
     <div class="sketch-toolbar">
-      <button class="tool-btn active" data-tool="pen" onclick="setSketchTool('pen', event)">${icon("edit",16)} Stift</button>
-      ${showMarkers ? `
-      <button class="tool-btn" data-tool="speicher" onclick="setSketchTool('speicher', event)">${icon("battery",16)} Speicher setzen</button>
-      <button class="tool-btn" data-tool="wechselrichter" onclick="setSketchTool('wechselrichter', event)">${icon("zap",16)} Wechselrichter setzen</button>` : ""}
-      <button class="tool-btn" onclick="sketchUndo()">${icon("undo",16)} Rückgängig</button>
-    </div>
-    <div class="sketch-footer">
-      <button onclick="closeSketchModal()">Abbrechen</button>
-      <button class="save" onclick="saveSketch()">Übernehmen</button>
-    </div>
-  `;
+      <div class="sk-group">
+        <button type="button" class="sk-btn" id="skUndo" onclick="sketchUndo()" aria-label="Rückgängig" title="Rückgängig">${icon("undo",20)}</button>
+        <button type="button" class="sk-btn" id="skRedo" onclick="sketchRedo()" aria-label="Wiederholen" title="Wiederholen">${icon("redo",20)}</button>
+      </div>
+      <div class="sk-group">
+        <button type="button" class="sk-btn active" data-tool="pen" onclick="setSketchTool('pen')" aria-label="Stift" title="Stift">${icon("edit",20)}</button>
+        <button type="button" class="sk-btn" data-tool="arrow" onclick="setSketchTool('arrow')" aria-label="Pfeil" title="Pfeil">${icon("arrow",20)}</button>
+      </div>
+      <div class="sk-group">${SKETCH_COLORS.map(([c,n],i)=>`<button type="button" class="sk-color ${i===0 ? "active" : ""}" style="--c:${c}" data-color="${c}" onclick="setSketchColor('${c}')" aria-label="Farbe ${n}" title="${n}"></button>`).join("")}</div>
+      <div class="sk-group">${SKETCH_SIZES.map(([n,f],i)=>`<button type="button" class="sk-size ${i===1 ? "active" : ""}" data-size="${f}" onclick="setSketchSize(${f})" aria-label="Strichstärke ${n}" title="${n}"><i style="width:${5+i*5}px;height:${5+i*5}px"></i></button>`).join("")}</div>
+    </div>`;
   document.body.appendChild(modal);
-
   const canvas = document.getElementById("sketchCanvas");
-  const wrap = canvas.parentElement;
+  sk = { path, canvas, ctx: canvas.getContext("2d"), img: null, w: 0, h: 0, ops: [], redo: [], current: null, pointerId: null,
+         tool: "pen", color: SKETCH_COLORS[0][0], size: SKETCH_SIZES[1][1], base: null, view: null };
+  const img = new Image();
+  img.onload = ()=>{
+    if(!sk) return;
+    sk.img = img;
+    const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
+    sk.w = Math.round(img.naturalWidth * k); sk.h = Math.round(img.naturalHeight * k);
+    layoutSketch();
+  };
+  img.src = src;
+  canvas.addEventListener("pointerdown", sketchDown);
+  canvas.addEventListener("pointermove", sketchMove);
+  canvas.addEventListener("pointerup", sketchUp);
+  canvas.addEventListener("pointercancel", sketchUp);
+  window.addEventListener("resize", layoutSketch);
+  updateSketchButtons();
+}
+function layoutSketch(){
+  if(!sk || !sk.img) return;
+  const wrap = sk.canvas.parentElement;
   const dpr = window.devicePixelRatio || 1;
-  sketchW = wrap.clientWidth; sketchH = wrap.clientHeight;
-  canvas.width = sketchW*dpr; canvas.height = sketchH*dpr;
-  canvas.style.width = sketchW+"px"; canvas.style.height = sketchH+"px";
-  sketchCtx = canvas.getContext("2d");
-  sketchCtx.scale(dpr,dpr);
-
-  const bg = getPath(S, sketchTargetPath);
-  redrawBase();
-  if(bg){
-    const img = new Image();
-    img.onload = ()=>{ sketchBgImg = img; redrawBase(); };
-    img.src = bg;
-  }
-
-  canvas.addEventListener("pointerdown", sketchPointerDown);
-  canvas.addEventListener("pointermove", sketchPointerMove);
-  window.addEventListener("pointerup", sketchPointerUp);
-  sketchMode = "pen";
+  const cw = wrap.clientWidth, ch = wrap.clientHeight;
+  sk.canvas.width = Math.round(cw * dpr); sk.canvas.height = Math.round(ch * dpr);
+  sk.canvas.style.width = cw + "px"; sk.canvas.style.height = ch + "px";
+  const s = Math.min(cw / sk.w, ch / sk.h);
+  sk.view = { dpr, s, ox: (cw - sk.w * s) / 2, oy: (ch - sk.h * s) / 2 };
+  renderSketchBase();
+  drawSketch();
 }
+function drawSketchOp(ctx, op){
+  const lw = op.size * Math.max(sk.w, sk.h);
+  ctx.strokeStyle = op.color; ctx.fillStyle = op.color; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if(op.type === "pen"){
+    const p = op.points;
+    ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y);
+    if(p.length === 1) ctx.lineTo(p[0].x + 0.01, p[0].y);
+    for(let i = 1; i < p.length - 1; i++) ctx.quadraticCurveTo(p[i].x, p[i].y, (p[i].x + p[i+1].x) / 2, (p[i].y + p[i+1].y) / 2);
+    if(p.length > 1) ctx.lineTo(p[p.length-1].x, p[p.length-1].y);
+    ctx.stroke();
+  }else{
+    const a = op.a, b = op.b, ang = Math.atan2(b.y - a.y, b.x - a.x), head = lw * 4;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x - Math.cos(ang) * head * 0.6, b.y - Math.sin(ang) * head * 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - head * Math.cos(ang - 0.45), b.y - head * Math.sin(ang - 0.45));
+    ctx.lineTo(b.x - head * Math.cos(ang + 0.45), b.y - head * Math.sin(ang + 0.45));
+    ctx.closePath(); ctx.fill();
+  }
+}
+// Foto + fertige Striche einmal vorzeichnen, damit beim Zeichnen nur der aktuelle Strich neu gemalt wird.
+function renderSketchBase(){
+  const v = sk.view;
+  const base = document.createElement("canvas");
+  base.width = sk.canvas.width; base.height = sk.canvas.height;
+  const c = base.getContext("2d");
+  c.fillStyle = "#111"; c.fillRect(0, 0, base.width, base.height);
+  c.setTransform(v.dpr * v.s, 0, 0, v.dpr * v.s, v.dpr * v.ox, v.dpr * v.oy);
+  c.drawImage(sk.img, 0, 0, sk.w, sk.h);
+  sk.ops.forEach(op=> drawSketchOp(c, op));
+  sk.base = base;
+}
+function drawSketch(){
+  const v = sk.view, c = sk.ctx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(sk.base, 0, 0);
+  if(sk.current){ c.setTransform(v.dpr * v.s, 0, 0, v.dpr * v.s, v.dpr * v.ox, v.dpr * v.oy); drawSketchOp(c, sk.current); }
+}
+function sketchPoint(e){
+  const r = sk.canvas.getBoundingClientRect(), v = sk.view;
+  return { x: (e.clientX - r.left - v.ox) / v.s, y: (e.clientY - r.top - v.oy) / v.s };
+}
+function sketchDown(e){
+  if(!sk || !sk.view || sk.current) return;
+  sk.pointerId = e.pointerId;
+  try{ sk.canvas.setPointerCapture(e.pointerId); }catch(err){}
+  const p = sketchPoint(e);
+  sk.current = sk.tool === "arrow"
+    ? { type: "arrow", color: sk.color, size: sk.size, a: p, b: p }
+    : { type: "pen", color: sk.color, size: sk.size, points: [p] };
+  drawSketch();
+}
+function sketchMove(e){
+  if(!sk || !sk.current || e.pointerId !== sk.pointerId) return;
+  const p = sketchPoint(e);
+  if(sk.current.type === "arrow") sk.current.b = p; else sk.current.points.push(p);
+  drawSketch();
+}
+function sketchUp(e){
+  if(!sk || !sk.current || e.pointerId !== sk.pointerId) return;
+  const op = sk.current;
+  sk.current = null;
+  const tooShort = op.type === "arrow" && Math.hypot(op.b.x - op.a.x, op.b.y - op.a.y) < Math.max(sk.w, sk.h) * 0.01;
+  if(!tooShort){ sk.ops.push(op); sk.redo = []; }
+  renderSketchBase(); drawSketch(); updateSketchButtons();
+}
+function sketchUndo(){ if(!sk || !sk.ops.length) return; sk.redo.push(sk.ops.pop()); renderSketchBase(); drawSketch(); updateSketchButtons(); }
+function sketchRedo(){ if(!sk || !sk.redo.length) return; sk.ops.push(sk.redo.pop()); renderSketchBase(); drawSketch(); updateSketchButtons(); }
+function updateSketchButtons(){
+  const u = document.getElementById("skUndo"), r = document.getElementById("skRedo");
+  if(u) u.disabled = !sk || !sk.ops.length;
+  if(r) r.disabled = !sk || !sk.redo.length;
+}
+function setSketchTool(t){ if(!sk) return; sk.tool = t; document.querySelectorAll(".sk-btn[data-tool]").forEach(b=> b.classList.toggle("active", b.dataset.tool === t)); }
+function setSketchColor(c){ if(!sk) return; sk.color = c; document.querySelectorAll(".sk-color").forEach(b=> b.classList.toggle("active", b.dataset.color === c)); }
+function setSketchSize(f){ if(!sk) return; sk.size = f; document.querySelectorAll(".sk-size").forEach(b=> b.classList.toggle("active", Number(b.dataset.size) === f)); }
 function closeSketchModal(){
-  const modal = document.getElementById("sketchModal");
-  if(modal) modal.remove();
-  sketchCtx = null;
+  const m = document.getElementById("sketchModal");
+  if(m) m.remove();
+  window.removeEventListener("resize", layoutSketch);
+  sk = null;
 }
-function setSketchTool(tool, evt){
-  sketchMode = tool;
-  document.querySelectorAll(".tool-btn[data-tool]").forEach(b=>b.classList.remove("active"));
-  if(evt && evt.currentTarget) evt.currentTarget.classList.add("active");
-}
-function redrawBase(){
-  if(!sketchCtx) return;
-  sketchCtx.fillStyle = "#ffffff";
-  sketchCtx.fillRect(0,0,sketchW,sketchH);
-  if(sketchBgImg){ sketchCtx.drawImage(sketchBgImg,0,0,sketchW,sketchH); }
-  sketchStrokes.forEach(s=>{
-    sketchCtx.strokeStyle = s.color; sketchCtx.lineWidth = s.width;
-    sketchCtx.lineJoin = "round"; sketchCtx.lineCap = "round";
-    sketchCtx.beginPath();
-    s.points.forEach((p,idx)=>{ idx===0 ? sketchCtx.moveTo(p.x,p.y) : sketchCtx.lineTo(p.x,p.y); });
-    sketchCtx.stroke();
-  });
-}
-function sketchPointerDown(e){
-  if(!sketchCtx) return;
-  const rect = e.target.getBoundingClientRect();
-  const x = e.clientX - rect.left, y = e.clientY - rect.top;
-  if(sketchMode === "speicher" || sketchMode === "wechselrichter"){
-    addSketchObject(x,y,sketchMode);
-    return;
-  }
-  drawing = true;
-  sketchCurrentStroke = { points:[{x,y}], color:"#2FA97C", width:3.5 };
-}
-function sketchPointerMove(e){
-  if(!drawing || !sketchCtx || sketchMode !== "pen" || !sketchCurrentStroke) return;
-  const rect = e.target.getBoundingClientRect();
-  const x = e.clientX - rect.left, y = e.clientY - rect.top;
-  const pts = sketchCurrentStroke.points;
-  const last = pts[pts.length-1];
-  sketchCtx.strokeStyle = sketchCurrentStroke.color; sketchCtx.lineWidth = sketchCurrentStroke.width;
-  sketchCtx.lineJoin = "round"; sketchCtx.lineCap = "round";
-  sketchCtx.beginPath();
-  sketchCtx.moveTo(last.x,last.y);
-  sketchCtx.lineTo(x,y);
-  sketchCtx.stroke();
-  pts.push({x,y});
-}
-function sketchPointerUp(){
-  if(drawing && sketchCurrentStroke && sketchCurrentStroke.points.length>1){
-    sketchStrokes.push(sketchCurrentStroke);
-    sketchActions.push({type:"stroke"});
-  }
-  drawing = false; sketchCurrentStroke = null;
-}
-function sketchUndo(){
-  const last = sketchActions.pop();
-  if(!last) return;
-  if(last.type === "stroke"){
-    sketchStrokes.pop();
-    redrawBase();
-  }else if(last.type === "object"){
-    sketchObjects = sketchObjects.filter(o=>o.id !== last.id);
-    renderSketchObjects();
-  }
-}
-function addSketchObject(x,y,type){
-  const w = type==="speicher" ? 90 : 70, h = type==="speicher" ? 50 : 46;
-  const obj = { id: ++sketchObjIdSeq, type, x:x-w/2, y:y-h/2, w, h };
-  sketchObjects.push(obj);
-  sketchActions.push({type:"object", id:obj.id});
-  renderSketchObjects();
-}
-function renderSketchObjects(){
-  const layer = document.getElementById("sketchObjLayer");
-  if(!layer) return;
-  layer.innerHTML = "";
-  sketchObjects.forEach(obj=>{
-    const div = document.createElement("div");
-    div.className = "sketch-obj";
-    div.style.left = obj.x+"px"; div.style.top = obj.y+"px";
-    div.style.width = obj.w+"px"; div.style.height = obj.h+"px";
-    div.style.background = obj.type==="speicher" ? "#2FA97C" : "#BD7F22";
-    div.textContent = obj.type==="speicher" ? "Speicher" : "WR";
-    const handle = document.createElement("div");
-    handle.className = "resize-handle";
-    div.appendChild(handle);
-    layer.appendChild(div);
-    makeObjDraggable(div, obj);
-    makeObjResizable(handle, obj, div);
-  });
-}
-function makeObjDraggable(div, obj){
-  div.addEventListener("pointerdown", (e)=>{
-    if(e.target.classList.contains("resize-handle")) return;
-    e.stopPropagation();
-    const startX=e.clientX, startY=e.clientY, ox=obj.x, oy=obj.y;
-    function move(ev){
-      obj.x = ox + (ev.clientX-startX);
-      obj.y = oy + (ev.clientY-startY);
-      div.style.left = obj.x+"px"; div.style.top = obj.y+"px";
-    }
-    function up(){ window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up); }
-    window.addEventListener("pointermove",move);
-    window.addEventListener("pointerup",up);
-  });
-}
-function makeObjResizable(handle, obj, div){
-  handle.addEventListener("pointerdown", (e)=>{
-    e.stopPropagation();
-    const startX=e.clientX, startY=e.clientY, ow=obj.w, oh=obj.h;
-    function move(ev){
-      obj.w = Math.max(30, ow + (ev.clientX-startX));
-      obj.h = Math.max(24, oh + (ev.clientY-startY));
-      div.style.width = obj.w+"px"; div.style.height = obj.h+"px";
-    }
-    function up(){ window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up); }
-    window.addEventListener("pointermove",move);
-    window.addEventListener("pointerup",up);
-  });
-}
-function roundRect(ctx,x,y,w,h,r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
+function sketchCancel(){
+  if(sk && sk.ops.length) showConfirm("Eingezeichnetes verwerfen?", closeSketchModal, "Verwerfen");
+  else closeSketchModal();
 }
 function saveSketch(){
-  redrawBase();
-  sketchObjects.forEach(obj=>{
-    const color = obj.type==="speicher" ? "#2FA97C" : "#BD7F22";
-    sketchCtx.fillStyle = color; sketchCtx.strokeStyle = "#163A57"; sketchCtx.lineWidth = 1.5;
-    roundRect(sketchCtx, obj.x, obj.y, obj.w, obj.h, 5);
-    sketchCtx.fill(); sketchCtx.stroke();
-    sketchCtx.fillStyle = "#ffffff";
-    sketchCtx.font = "600 12px -apple-system, Arial, sans-serif";
-    sketchCtx.textAlign = "center"; sketchCtx.textBaseline = "middle";
-    sketchCtx.fillText(obj.type==="speicher" ? "Speicher" : "WR", obj.x+obj.w/2, obj.y+obj.h/2);
-  });
-  const dataUrl = document.getElementById("sketchCanvas").toDataURL("image/png");
-  setPath(S, sketchTargetPath, dataUrl);
+  if(!sk || !sk.img || !sk.ops.length){ closeSketchModal(); return; }
+  const out = document.createElement("canvas");
+  out.width = sk.w; out.height = sk.h;
+  const c = out.getContext("2d");
+  c.drawImage(sk.img, 0, 0, sk.w, sk.h);
+  sk.ops.forEach(op=> drawSketchOp(c, op));
+  setPath(S, sk.path, out.toDataURL("image/jpeg", 0.9));
+  closeSketchModal();
   clearTimeout(saveTimer);
   saveCurrentRecord();
-  closeSketchModal();
   render();
 }
 

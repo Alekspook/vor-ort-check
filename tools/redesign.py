@@ -799,5 +799,175 @@ rep("""  for(let i=0;i<d.daecher.length;i++){
 """)
 rep("  const e = d.elektro, z = e.zaehler, h = e.hausanschluss;\n", "  add(\"Abstellort Module\", d.gebaeude && d.gebaeude.abstellortFoto);\n  const e = d.elektro, z = e.zaehler, h = e.hausanschluss;\n")
 
+
+# ---------- 12) Einzeichnen neu: unverzerrt, volle Auflösung, Rückgängig + Wiederholen, Farben, Stärken, Pfeil ----------
+rep("""  undo: '<path d="M3 10h9a5 5 0 0 1 0 10h-4"/><path d="M3 10l4-4"/><path d="M3 10l4 4"/>',""",
+    """  undo: '<path d="M3 10h9a5 5 0 0 1 0 10h-4"/><path d="M3 10l4-4"/><path d="M3 10l4 4"/>',
+  redo: '<path d="M21 10h-9a5 5 0 0 0 0 10h4"/><path d="M21 10l-4-4"/><path d="M21 10l-4 4"/>',
+  arrow: '<line x1="5" y1="19" x2="19" y2="5"/><path d="M10 5h9v9"/>',""")
+rep_between("/* ---------- Skizze (Zeichnen auf Foto) ---------- */", "/* ---------- Adress-Autocomplete ---------- */", r"""/* ---------- Einzeichnen auf Fotos ----------
+   Striche werden in Bild-Koordinaten gespeichert: Anzeige unverzerrt (eingepasst),
+   Ergebnis in voller Auflösung (max. 2400 px) als JPEG. */
+const SKETCH_COLORS = [["#E53935","Rot"], ["#FFC400","Gelb"], ["#2FA97C","Grün"], ["#FFFFFF","Weiß"]];
+const SKETCH_SIZES = [["dünn",0.004], ["mittel",0.008], ["dick",0.014]];
+let sk = null;
+function openSketchModal(path, label){
+  const src = getPath(S, path);
+  if(!src) return;
+  const modal = document.createElement("div");
+  modal.className = "sketch-modal";
+  modal.id = "sketchModal";
+  modal.innerHTML = `
+    <div class="sketch-modal-head">
+      <button type="button" onclick="sketchCancel()">Abbrechen</button>
+      <h2>${escapeHtml(label || "Einzeichnen")}</h2>
+      <button type="button" class="save" onclick="saveSketch()">Fertig</button>
+    </div>
+    <div class="sketch-canvas-wrap"><canvas id="sketchCanvas"></canvas></div>
+    <div class="sketch-toolbar">
+      <div class="sk-group">
+        <button type="button" class="sk-btn" id="skUndo" onclick="sketchUndo()" aria-label="Rückgängig" title="Rückgängig">${icon("undo",20)}</button>
+        <button type="button" class="sk-btn" id="skRedo" onclick="sketchRedo()" aria-label="Wiederholen" title="Wiederholen">${icon("redo",20)}</button>
+      </div>
+      <div class="sk-group">
+        <button type="button" class="sk-btn active" data-tool="pen" onclick="setSketchTool('pen')" aria-label="Stift" title="Stift">${icon("edit",20)}</button>
+        <button type="button" class="sk-btn" data-tool="arrow" onclick="setSketchTool('arrow')" aria-label="Pfeil" title="Pfeil">${icon("arrow",20)}</button>
+      </div>
+      <div class="sk-group">${SKETCH_COLORS.map(([c,n],i)=>`<button type="button" class="sk-color ${i===0 ? "active" : ""}" style="--c:${c}" data-color="${c}" onclick="setSketchColor('${c}')" aria-label="Farbe ${n}" title="${n}"></button>`).join("")}</div>
+      <div class="sk-group">${SKETCH_SIZES.map(([n,f],i)=>`<button type="button" class="sk-size ${i===1 ? "active" : ""}" data-size="${f}" onclick="setSketchSize(${f})" aria-label="Strichstärke ${n}" title="${n}"><i style="width:${5+i*5}px;height:${5+i*5}px"></i></button>`).join("")}</div>
+    </div>`;
+  document.body.appendChild(modal);
+  const canvas = document.getElementById("sketchCanvas");
+  sk = { path, canvas, ctx: canvas.getContext("2d"), img: null, w: 0, h: 0, ops: [], redo: [], current: null, pointerId: null,
+         tool: "pen", color: SKETCH_COLORS[0][0], size: SKETCH_SIZES[1][1], base: null, view: null };
+  const img = new Image();
+  img.onload = ()=>{
+    if(!sk) return;
+    sk.img = img;
+    const k = Math.min(1, 2400 / Math.max(img.naturalWidth, img.naturalHeight));
+    sk.w = Math.round(img.naturalWidth * k); sk.h = Math.round(img.naturalHeight * k);
+    layoutSketch();
+  };
+  img.src = src;
+  canvas.addEventListener("pointerdown", sketchDown);
+  canvas.addEventListener("pointermove", sketchMove);
+  canvas.addEventListener("pointerup", sketchUp);
+  canvas.addEventListener("pointercancel", sketchUp);
+  window.addEventListener("resize", layoutSketch);
+  updateSketchButtons();
+}
+function layoutSketch(){
+  if(!sk || !sk.img) return;
+  const wrap = sk.canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = wrap.clientWidth, ch = wrap.clientHeight;
+  sk.canvas.width = Math.round(cw * dpr); sk.canvas.height = Math.round(ch * dpr);
+  sk.canvas.style.width = cw + "px"; sk.canvas.style.height = ch + "px";
+  const s = Math.min(cw / sk.w, ch / sk.h);
+  sk.view = { dpr, s, ox: (cw - sk.w * s) / 2, oy: (ch - sk.h * s) / 2 };
+  renderSketchBase();
+  drawSketch();
+}
+function drawSketchOp(ctx, op){
+  const lw = op.size * Math.max(sk.w, sk.h);
+  ctx.strokeStyle = op.color; ctx.fillStyle = op.color; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if(op.type === "pen"){
+    const p = op.points;
+    ctx.beginPath(); ctx.moveTo(p[0].x, p[0].y);
+    if(p.length === 1) ctx.lineTo(p[0].x + 0.01, p[0].y);
+    for(let i = 1; i < p.length - 1; i++) ctx.quadraticCurveTo(p[i].x, p[i].y, (p[i].x + p[i+1].x) / 2, (p[i].y + p[i+1].y) / 2);
+    if(p.length > 1) ctx.lineTo(p[p.length-1].x, p[p.length-1].y);
+    ctx.stroke();
+  }else{
+    const a = op.a, b = op.b, ang = Math.atan2(b.y - a.y, b.x - a.x), head = lw * 4;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x - Math.cos(ang) * head * 0.6, b.y - Math.sin(ang) * head * 0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y);
+    ctx.lineTo(b.x - head * Math.cos(ang - 0.45), b.y - head * Math.sin(ang - 0.45));
+    ctx.lineTo(b.x - head * Math.cos(ang + 0.45), b.y - head * Math.sin(ang + 0.45));
+    ctx.closePath(); ctx.fill();
+  }
+}
+// Foto + fertige Striche einmal vorzeichnen, damit beim Zeichnen nur der aktuelle Strich neu gemalt wird.
+function renderSketchBase(){
+  const v = sk.view;
+  const base = document.createElement("canvas");
+  base.width = sk.canvas.width; base.height = sk.canvas.height;
+  const c = base.getContext("2d");
+  c.fillStyle = "#111"; c.fillRect(0, 0, base.width, base.height);
+  c.setTransform(v.dpr * v.s, 0, 0, v.dpr * v.s, v.dpr * v.ox, v.dpr * v.oy);
+  c.drawImage(sk.img, 0, 0, sk.w, sk.h);
+  sk.ops.forEach(op=> drawSketchOp(c, op));
+  sk.base = base;
+}
+function drawSketch(){
+  const v = sk.view, c = sk.ctx;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(sk.base, 0, 0);
+  if(sk.current){ c.setTransform(v.dpr * v.s, 0, 0, v.dpr * v.s, v.dpr * v.ox, v.dpr * v.oy); drawSketchOp(c, sk.current); }
+}
+function sketchPoint(e){
+  const r = sk.canvas.getBoundingClientRect(), v = sk.view;
+  return { x: (e.clientX - r.left - v.ox) / v.s, y: (e.clientY - r.top - v.oy) / v.s };
+}
+function sketchDown(e){
+  if(!sk || !sk.view || sk.current) return;
+  sk.pointerId = e.pointerId;
+  try{ sk.canvas.setPointerCapture(e.pointerId); }catch(err){}
+  const p = sketchPoint(e);
+  sk.current = sk.tool === "arrow"
+    ? { type: "arrow", color: sk.color, size: sk.size, a: p, b: p }
+    : { type: "pen", color: sk.color, size: sk.size, points: [p] };
+  drawSketch();
+}
+function sketchMove(e){
+  if(!sk || !sk.current || e.pointerId !== sk.pointerId) return;
+  const p = sketchPoint(e);
+  if(sk.current.type === "arrow") sk.current.b = p; else sk.current.points.push(p);
+  drawSketch();
+}
+function sketchUp(e){
+  if(!sk || !sk.current || e.pointerId !== sk.pointerId) return;
+  const op = sk.current;
+  sk.current = null;
+  const tooShort = op.type === "arrow" && Math.hypot(op.b.x - op.a.x, op.b.y - op.a.y) < Math.max(sk.w, sk.h) * 0.01;
+  if(!tooShort){ sk.ops.push(op); sk.redo = []; }
+  renderSketchBase(); drawSketch(); updateSketchButtons();
+}
+function sketchUndo(){ if(!sk || !sk.ops.length) return; sk.redo.push(sk.ops.pop()); renderSketchBase(); drawSketch(); updateSketchButtons(); }
+function sketchRedo(){ if(!sk || !sk.redo.length) return; sk.ops.push(sk.redo.pop()); renderSketchBase(); drawSketch(); updateSketchButtons(); }
+function updateSketchButtons(){
+  const u = document.getElementById("skUndo"), r = document.getElementById("skRedo");
+  if(u) u.disabled = !sk || !sk.ops.length;
+  if(r) r.disabled = !sk || !sk.redo.length;
+}
+function setSketchTool(t){ if(!sk) return; sk.tool = t; document.querySelectorAll(".sk-btn[data-tool]").forEach(b=> b.classList.toggle("active", b.dataset.tool === t)); }
+function setSketchColor(c){ if(!sk) return; sk.color = c; document.querySelectorAll(".sk-color").forEach(b=> b.classList.toggle("active", b.dataset.color === c)); }
+function setSketchSize(f){ if(!sk) return; sk.size = f; document.querySelectorAll(".sk-size").forEach(b=> b.classList.toggle("active", Number(b.dataset.size) === f)); }
+function closeSketchModal(){
+  const m = document.getElementById("sketchModal");
+  if(m) m.remove();
+  window.removeEventListener("resize", layoutSketch);
+  sk = null;
+}
+function sketchCancel(){
+  if(sk && sk.ops.length) showConfirm("Eingezeichnetes verwerfen?", closeSketchModal, "Verwerfen");
+  else closeSketchModal();
+}
+function saveSketch(){
+  if(!sk || !sk.img || !sk.ops.length){ closeSketchModal(); return; }
+  const out = document.createElement("canvas");
+  out.width = sk.w; out.height = sk.h;
+  const c = out.getContext("2d");
+  c.drawImage(sk.img, 0, 0, sk.w, sk.h);
+  sk.ops.forEach(op=> drawSketchOp(c, op));
+  setPath(S, sk.path, out.toDataURL("image/jpeg", 0.9));
+  closeSketchModal();
+  clearTimeout(saveTimer);
+  saveCurrentRecord();
+  render();
+}
+
+""")
+
 open(dst, "w", encoding="utf-8").write(s)
 print("geschrieben:", dst, len(s)//1024, "KB", "(Testversion)" if PREVIEW else "")

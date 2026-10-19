@@ -563,6 +563,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   .address-suggestions:empty{display:none;}
   .address-suggestion{display:block;width:100%;text-align:left;padding:10px 12px;border:none;border-radius:10px;background:var(--surface-2);font-size:14px;color:var(--ink);cursor:pointer;font-family:inherit;}
 
+  .ar-links{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .ar-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px 10px;border-radius:12px;background:var(--surface-2);color:var(--ink);font-size:14px;font-weight:600;text-decoration:none;text-align:center;}
+  .ar-btn:active{background:var(--accent-soft);}
+  .ar-btn img{width:24px;height:34px;display:block;}
+  .ar-btn small{font-size:12px;font-weight:500;color:var(--ink-3);}
+
   /* Fester Abschließen-Knopf */
   .finish-bar{position:fixed;left:0;right:0;bottom:0;z-index:25;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(to top, var(--bg) 70%, rgba(243,245,244,0));}
   .finish-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;max-width:608px;margin:0 auto;height:56px;border:none;border-radius:16px;background:var(--accent);color:#fff;font-size:17px;font-weight:650;cursor:pointer;box-shadow:0 8px 24px rgba(13,107,102,.28);}
@@ -1499,6 +1505,18 @@ function multiChipField(label, path, options){
     </div>`;
 }
 // Einzel-Bemerkungen gibt es nicht mehr; alte Inhalte bleiben sichtbar und bearbeitbar.
+const AR_ICON = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 40"><rect x="2" y="1" width="24" height="14" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/><rect x="8" y="10" width="12" height="1.6" rx=".8" fill="#0D6B66"/><rect x="2" y="17" width="24" height="10" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/><rect x="2" y="29" width="24" height="10" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/></svg>');
+// iPhone öffnet <a rel="ar"> mit einem <img> darin direkt in AR Quick Look (Kamera, Wand erkennen, Originalgröße).
+function arPreviewRow(){
+  return `
+    <div class="row ar-row">
+      <span class="row-label">An der Wand ansehen (AR)</span>
+      <div class="ar-links">
+        ${[1,2,3].map(n=>`<a rel="ar" class="ar-btn" href="ar/ocean2-${n}.usdz#allowsContentScaling=0"><img src="${AR_ICON}" alt="">${n} Batterie${n > 1 ? "n" : ""}<small>${n * 5} kWh</small></a>`).join("")}
+      </div>
+      <div class="note" style="margin-top:8px;">Kamera auf die Wand richten – der Turm erscheint in Originalgröße. Mit dem Auslöser ein Foto machen und es oben über „Galerie" einfügen. Vereinfachtes Modell, Maße laut EcoFlow.</div>
+    </div>`;
+}
 function legacyNote(label, path){ return getPath(S, path) ? textareaField(label + " (alt)", path) : ""; }
 const ANGEBOT_POSITIONEN = ["Tiefenerder", "Notstrom", "Wallbox", "Neuer Zählerschrank", "UV", "Gerüst"];
 function verbrauchTotal(){
@@ -1698,7 +1716,7 @@ function renderAllSections(){
     sec(7, "hardware", "Hardware &amp; Messkonzept", `
       <div class="group">
         ${checkField("Wechselrichter + Speicher", "elektro.komponenten.hybrid")}
-        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}
+        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}${arPreviewRow()}</div>` : ""}
         ${e.komponenten.batterie || e.fotoSpeicher ? checkField("Batteriespeicher separat (alt)", "elektro.komponenten.batterie") : ""}
         ${e.komponenten.batterie && e.fotoSpeicher !== undefined ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (alt)", false)}</div>` : ""}
         ${legacyNote("Bemerkung", "elektro.montageortBemerkung")}

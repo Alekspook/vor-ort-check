@@ -969,5 +969,23 @@ function saveSketch(){
 
 """)
 
+
+# ---------- 13) AR-Vorschau EcoFlow OCEAN 2 (AR Quick Look, Modelle in ar/) ----------
+rep("""        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}""",
+    """        ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}${arPreviewRow()}</div>` : ""}""")
+rep("function legacyNote(label, path){", r"""const AR_ICON = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 40"><rect x="2" y="1" width="24" height="14" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/><rect x="8" y="10" width="12" height="1.6" rx=".8" fill="#0D6B66"/><rect x="2" y="17" width="24" height="10" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/><rect x="2" y="29" width="24" height="10" rx="2" fill="#E8EBEC" stroke="#0D6B66" stroke-width="1.5"/></svg>');
+// iPhone öffnet <a rel="ar"> mit einem <img> darin direkt in AR Quick Look (Kamera, Wand erkennen, Originalgröße).
+function arPreviewRow(){
+  return `
+    <div class="row ar-row">
+      <span class="row-label">An der Wand ansehen (AR)</span>
+      <div class="ar-links">
+        ${[1,2,3].map(n=>`<a rel="ar" class="ar-btn" href="ar/ocean2-${n}.usdz#allowsContentScaling=0"><img src="${AR_ICON}" alt="">${n} Batterie${n > 1 ? "n" : ""}<small>${n * 5} kWh</small></a>`).join("")}
+      </div>
+      <div class="note" style="margin-top:8px;">Kamera auf die Wand richten – der Turm erscheint in Originalgröße. Mit dem Auslöser ein Foto machen und es oben über „Galerie" einfügen. Vereinfachtes Modell, Maße laut EcoFlow.</div>
+    </div>`;
+}
+function legacyNote(label, path){""")
+
 open(dst, "w", encoding="utf-8").write(s)
 print("geschrieben:", dst, len(s)//1024, "KB", "(Testversion)" if PREVIEW else "")

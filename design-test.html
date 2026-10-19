@@ -679,7 +679,7 @@ function freshState(){
     grunddaten:{ besichtigtVon:"Alexander Bajric", besichtigtAm: todayISO() },
     kunde:{ anrede:"", vorname:"", nachname:"", telefon:"", email:"" },
     standort:{ strasse:"", nr:"", plz:"", ort:"" },
-    gebaeude:{ kategorie:"", besonderheiten:"" },
+    gebaeude:{ kategorie:"", besonderheiten:"", abstellortFoto:null },
     daecher:[ emptyRoof() ],
     elektro:{
       stromverbrauch:"", grossverbraucher:{ waermepumpe:"", eauto:"", sauna:"", pool:"" },
@@ -727,6 +727,7 @@ function normalizeRecordData(d){
   if(e.zaehler && z.raumuebersicht === undefined) z.raumuebersicht = null;
   map(h, "typ", R.ha); map(h, "potenzialausgleich", R.janein); map(h, "fundamenterder", R.janein);
   map(e, "waermepumpe", R.wp); map(e, "wallbox", R.wallbox); map(e, "messkonzept", R.messkonzept);
+  if(d.gebaeude && d.gebaeude.abstellortFoto === undefined) d.gebaeude.abstellortFoto = null;
   if(!d.abschluss || typeof d.abschluss !== "object") d.abschluss = { bemerkung:"", angebot:[] };
   if(!Array.isArray(d.abschluss.angebot)) d.abschluss.angebot = [];
   if(typeof d.abschluss.bemerkung !== "string") d.abschluss.bemerkung = "";
@@ -1743,7 +1744,11 @@ function renderRoofs(){
       ${legacyNote("Bemerkungen Gerüst", `daecher.${i}.geruestBemerkung`)}
     </div>
   `).join("");
-  return cards + `<button class="ghost-btn" onclick="addRoof()">${icon("plus",18)} Weiteres Dach</button>`;
+  return cards + `<button class="ghost-btn" onclick="addRoof()">${icon("plus",18)} Weiteres Dach</button>
+    <div class="group-label">Baustelle</div>
+    <div class="group">
+      ${photoSlot("gebaeude.abstellortFoto", "Abstellort Module (Lieferung)", false)}
+    </div>`;
 }
 /* Dachfotos: 8 Plätze (fotos[0..4] + drohnenFotos[0..2]), lückenlos von vorne befüllt. */
 const ROOF_PHOTO_MAX = 8;
@@ -2156,6 +2161,7 @@ function recordPhotoList(d){
     (r.dcFotos||[]).forEach((u,k)=> add(`${p}Kabelweg ${k+1}`, u));
     (r.wanddurchbruecheFotos||[]).forEach((u,k)=> add(`${p}Wanddurchbruch ${k+1}`, u));
   });
+  add("Abstellort Module", d.gebaeude && d.gebaeude.abstellortFoto);
   const e = d.elektro, z = e.zaehler, h = e.hausanschluss;
   add("Raumübersicht", z.raumuebersicht);
   add("Zählerschrank Übersicht", z.uebersicht);
@@ -2882,6 +2888,11 @@ async function buildPDF(d){
   /* Dächer */
   for(let i=0;i<d.daecher.length;i++){
     await roofSection(PDF_BLUE_DEEP, `DACH ${i+1}`, d.daecher[i]);
+  }
+  if(d.gebaeude && d.gebaeude.abstellortFoto){
+    sectionHeader("BAUSTELLE", PDF_BLUE_DEEP);
+    await photoGrid([{label:"Abstellort Module (Lieferung)", url:d.gebaeude.abstellortFoto}]);
+    y += 3;
   }
 
   /* Verbrauch */

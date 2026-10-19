@@ -775,5 +775,29 @@ rep("    const dachfotos = [", """    await photoGrid([{label:"Ziegelmaß", url:
 rep("    (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));",
     "    (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));\n    add(`${p}Ziegelmaß`, r.ziegelFoto);")
 
+
+# ---------- 11) Abstellort für die Module (Lieferung) ----------
+rep('gebaeude:{ kategorie:"", besonderheiten:"" },', 'gebaeude:{ kategorie:"", besonderheiten:"", abstellortFoto:null },')
+rep("  if(!d.abschluss || typeof d.abschluss !== \"object\")", "  if(d.gebaeude && d.gebaeude.abstellortFoto === undefined) d.gebaeude.abstellortFoto = null;\n  if(!d.abschluss || typeof d.abschluss !== \"object\")")
+rep("""  return cards + `<button class="ghost-btn" onclick="addRoof()">${icon("plus",18)} Weiteres Dach</button>`;""",
+    """  return cards + `<button class="ghost-btn" onclick="addRoof()">${icon("plus",18)} Weiteres Dach</button>
+    <div class="group-label">Baustelle</div>
+    <div class="group">
+      ${photoSlot("gebaeude.abstellortFoto", "Abstellort Module (Lieferung)", false)}
+    </div>`;""")
+rep("""  for(let i=0;i<d.daecher.length;i++){
+    await roofSection(PDF_BLUE_DEEP, `DACH ${i+1}`, d.daecher[i]);
+  }
+""", """  for(let i=0;i<d.daecher.length;i++){
+    await roofSection(PDF_BLUE_DEEP, `DACH ${i+1}`, d.daecher[i]);
+  }
+  if(d.gebaeude && d.gebaeude.abstellortFoto){
+    sectionHeader("BAUSTELLE", PDF_BLUE_DEEP);
+    await photoGrid([{label:"Abstellort Module (Lieferung)", url:d.gebaeude.abstellortFoto}]);
+    y += 3;
+  }
+""")
+rep("  const e = d.elektro, z = e.zaehler, h = e.hausanschluss;\n", "  add(\"Abstellort Module\", d.gebaeude && d.gebaeude.abstellortFoto);\n  const e = d.elektro, z = e.zaehler, h = e.hausanschluss;\n")
+
 open(dst, "w", encoding="utf-8").write(s)
 print("geschrieben:", dst, len(s)//1024, "KB", "(Testversion)" if PREVIEW else "")

@@ -540,6 +540,7 @@ function seedDemoRecords(){
       Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "Ja", regenrinneMaterial: "Zink", dcLeitungsweg: "Kaminschacht", traufhoehe: "4,73" });
       d.daecher[0].fotos[0] = demoPhoto("Dach Süd", 20, 200); d.daecher[0].fotos[1] = demoPhoto("Dach Ost", 35, 210); d.daecher[0].drohnenFotos[0] = demoPhoto("Drohne", 190, 230);
       d.daecher[0].dcFotos[0] = demoPhoto("Kaminschacht", 25, 15);
+      d.daecher[0].ziegelFoto = demoPhoto("Ziegel mit Zollstock", 18, 30);
       d.elektro.zaehler.neuerZaehlerschrank = "Prüfen";
       d.abschluss.bemerkung = "Kundin möchte Speicher im Keller, Termin für Angebot nächste Woche.";
       d.abschluss.angebot = ["Tiefenerder", "Wallbox"];
@@ -761,6 +762,18 @@ rep("""  add("Fundamenterder", h.fundamenterderFoto);""", """  add("Tiefenerder"
 rep("""  add("Montageort Wechselrichter", e.fotoWechselrichter);""", """  add("Montageort Wechselrichter Speicher", e.fotoWechselrichter);""")
 rep("Traufhöhe: ${r.traufe8||\"-\"}", "Traufhöhe: ${r.traufhoehe ? r.traufhoehe + \" m\" : (r.traufe8||\"-\")}")
 rep("| Fundamenterder: ${d.elektro.hausanschluss.fundamenterder", "| Tiefenerder: ${d.elektro.hausanschluss.fundamenterder")
+
+
+# ---------- 10) Ziegelmaß-Foto (nur bei Eindeckung Ziegel) ----------
+rep('traufe8:"", traufhoehe:"", geruest:"", geruestBemerkung:""', 'traufe8:"", traufhoehe:"", ziegelFoto:null, geruest:"", geruestBemerkung:""')
+rep("    if(r.traufhoehe === undefined) r.traufhoehe = \"\";", "    if(r.traufhoehe === undefined) r.traufhoehe = \"\";\n    if(r.ziegelFoto === undefined) r.ziegelFoto = null;")
+rep("""      ${radioField("Eindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Blechfalz","Sonstige"])}""",
+    """      ${radioField("Eindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Blechfalz","Sonstige"])}
+      ${d.dachaufbau === "Ziegel" || d.ziegelFoto ? `<div class="conditional">${photoSlot(`daecher.${i}.ziegelFoto`, "Ziegelmaß (Foto mit Zollstock)", false)}</div>` : ""}""")
+rep("    const dachfotos = [", """    await photoGrid([{label:"Ziegelmaß", url:r.ziegelFoto}]);
+    const dachfotos = [""")
+rep("    (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));",
+    "    (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));\n    add(`${p}Ziegelmaß`, r.ziegelFoto);")
 
 open(dst, "w", encoding="utf-8").write(s)
 print("geschrieben:", dst, len(s)//1024, "KB", "(Testversion)" if PREVIEW else "")

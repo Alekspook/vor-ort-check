@@ -670,7 +670,7 @@ function emptyRoof(){
     regenrinne:"", regenrinneMaterial:"", drohnenFotos:[null,null,null], bemerkung1:"",
     dachaufbau:"", dcLeitungsweg:"", dcFotos:[null,null],
     wanddurchbrueche:"", wanddurchbruecheFotos:[null,null,null],
-    traufe8:"", traufhoehe:"", geruest:"", geruestBemerkung:""
+    traufe8:"", traufhoehe:"", ziegelFoto:null, geruest:"", geruestBemerkung:""
   };
 }
 function freshState(){
@@ -720,6 +720,7 @@ function normalizeRecordData(d){
   (d.daecher || []).forEach(r=>{
     map(r, "dcLeitungsweg", R.kabelweg); map(r, "regenrinne", R.janein); map(r, "geruest", R.geruest);
     if(r.traufhoehe === undefined) r.traufhoehe = "";
+    if(r.ziegelFoto === undefined) r.ziegelFoto = null;
   });
   const e = d.elektro || {}, z = e.zaehler || {}, h = e.hausanschluss || {};
   map(z, "neuerZaehlerschrank", R.zaehlerschrank); map(z, "weitereUV", R.janein); map(z, "neueUV", R.erforderlich); map(z, "wanddurchbrueche", R.erforderlich);
@@ -1721,6 +1722,7 @@ function renderRoofs(){
     <div class="group">
       ${radioField("Art", `daecher.${i}.dachart`, ["Schrägdach","Flachdach","Blechdach","Carport","Sonstige"], {required:true})}
       ${radioField("Eindeckung", `daecher.${i}.dachaufbau`, ["Ziegel","Bitumen","Trapez","Blechfalz","Sonstige"])}
+      ${d.dachaufbau === "Ziegel" || d.ziegelFoto ? `<div class="conditional">${photoSlot(`daecher.${i}.ziegelFoto`, "Ziegelmaß (Foto mit Zollstock)", false)}</div>` : ""}
       ${radioField("Regenrinne vorhanden?", `daecher.${i}.regenrinne`, ["Ja","Nein"])}
       ${d.regenrinne === "Ja" ? `<div class="conditional">${radioField("Material Regenrinne", `daecher.${i}.regenrinneMaterial`, ["Zink","Kupfer","Kunststoff"])}</div>` : ""}
       ${legacyNote("Bemerkungen", `daecher.${i}.bemerkung1`)}
@@ -2150,6 +2152,7 @@ function recordPhotoList(d){
     const p = d.daecher.length > 1 ? `Dach ${i+1} ` : "";
     (r.fotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+1}`, u));
     (r.drohnenFotos||[]).forEach((u,k)=> add(`${p}Dachfoto ${k+6}`, u));
+    add(`${p}Ziegelmaß`, r.ziegelFoto);
     (r.dcFotos||[]).forEach((u,k)=> add(`${p}Kabelweg ${k+1}`, u));
     (r.wanddurchbruecheFotos||[]).forEach((u,k)=> add(`${p}Wanddurchbruch ${k+1}`, u));
   });
@@ -2807,6 +2810,7 @@ async function buildPDF(d){
       ["Regenrinne", [r.regenrinne, r.regenrinneMaterial].filter(Boolean).join(" – ")],
       ["Bemerkungen", r.bemerkung1]
     ]);
+    await photoGrid([{label:"Ziegelmaß", url:r.ziegelFoto}]);
     const dachfotos = [
       {label:"Dachfoto 1", url:r.fotos[0]}, {label:"Dachfoto 2", url:r.fotos[1]},
       {label:"Dachfoto 3", url:r.fotos[2]}, {label:"Dachfoto 4", url:r.fotos[3]}, {label:"Dachfoto 5", url:r.fotos[4]},
@@ -3107,6 +3111,7 @@ function seedDemoRecords(){
       Object.assign(d.daecher[0], { dachart: "Schrägdach", dachaufbau: "Ziegel", regenrinne: "Ja", regenrinneMaterial: "Zink", dcLeitungsweg: "Kaminschacht", traufhoehe: "4,73" });
       d.daecher[0].fotos[0] = demoPhoto("Dach Süd", 20, 200); d.daecher[0].fotos[1] = demoPhoto("Dach Ost", 35, 210); d.daecher[0].drohnenFotos[0] = demoPhoto("Drohne", 190, 230);
       d.daecher[0].dcFotos[0] = demoPhoto("Kaminschacht", 25, 15);
+      d.daecher[0].ziegelFoto = demoPhoto("Ziegel mit Zollstock", 18, 30);
       d.elektro.zaehler.neuerZaehlerschrank = "Prüfen";
       d.abschluss.bemerkung = "Kundin möchte Speicher im Keller, Termin für Angebot nächste Woche.";
       d.abschluss.angebot = ["Tiefenerder", "Wallbox"];

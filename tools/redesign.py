@@ -709,7 +709,7 @@ rep("""        ${checkField("Wechselrichter", "elektro.komponenten.hybrid")}
         ${checkField("Batteriespeicher", "elektro.komponenten.batterie")}
         ${e.komponenten.batterie ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher", false)}</div>` : ""}
         ${checkField("Notstrom", "elektro.komponenten.notstrom")}
-        ${textareaField("Bemerkung", "elektro.montageortBemerkung")}""", """        ${checkField("Wechselrichter + Speicher (Turm)", "elektro.komponenten.hybrid")}
+        ${textareaField("Bemerkung", "elektro.montageortBemerkung")}""", """        ${checkField("Wechselrichter + Speicher", "elektro.komponenten.hybrid")}
         ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}
         ${e.komponenten.batterie || e.fotoSpeicher ? checkField("Batteriespeicher separat (alt)", "elektro.komponenten.batterie") : ""}
         ${e.komponenten.batterie && e.fotoSpeicher !== undefined ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (alt)", false)}</div>` : ""}

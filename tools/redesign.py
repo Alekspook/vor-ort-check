@@ -602,6 +602,12 @@ function normalizeRecordData(d){
   if(!d.abschluss || typeof d.abschluss !== "object") d.abschluss = { bemerkung:"", angebot:[] };
   if(!Array.isArray(d.abschluss.angebot)) d.abschluss.angebot = [];
   if(typeof d.abschluss.bemerkung !== "string") d.abschluss.bemerkung = "";
+  d.abschluss.angebot = d.abschluss.angebot.map(v=> v === "Unterverteilung" ? "UV" : v);
+  // Notstrom ist keine Hardware-Option mehr, sondern eine Angebots-Position.
+  if(e.komponenten && e.komponenten.notstrom){
+    if(!d.abschluss.angebot.includes("Notstrom")) d.abschluss.angebot.push("Notstrom");
+    e.komponenten.notstrom = false;
+  }
   return d;
 }
 """)
@@ -644,7 +650,7 @@ function multiChipField(label, path, options){
 }
 // Einzel-Bemerkungen gibt es nicht mehr; alte Inhalte bleiben sichtbar und bearbeitbar.
 function legacyNote(label, path){ return getPath(S, path) ? textareaField(label + " (alt)", path) : ""; }
-const ANGEBOT_POSITIONEN = ["Tiefenerder", "Notstrom", "Wallbox", "Neuer Zählerschrank", "Unterverteilung", "Gerüst", "Wanddurchbrüche"];
+const ANGEBOT_POSITIONEN = ["Tiefenerder", "Notstrom", "Wallbox", "Neuer Zählerschrank", "UV", "Gerüst"];
 function verbrauchTotal(){""")
 
 # Formular: Dach
@@ -707,7 +713,6 @@ rep("""        ${checkField("Wechselrichter", "elektro.komponenten.hybrid")}
         ${e.komponenten.hybrid ? `<div class="conditional">${photoAnnotateField("elektro.fotoWechselrichter","Montageort Wechselrichter + Speicher", false)}</div>` : ""}
         ${e.komponenten.batterie || e.fotoSpeicher ? checkField("Batteriespeicher separat (alt)", "elektro.komponenten.batterie") : ""}
         ${e.komponenten.batterie && e.fotoSpeicher !== undefined ? `<div class="conditional">${photoAnnotateField("elektro.fotoSpeicher","Montageort Batteriespeicher (alt)", false)}</div>` : ""}
-        ${checkField("Notstrom", "elektro.komponenten.notstrom")}
         ${legacyNote("Bemerkung", "elektro.montageortBemerkung")}""")
 rep("""["keine Änderung","Zusammenlegung","Kaskade"]""", """["Keine Änderung","Zusammenlegung","Kaskade"]""")
 # Formular: Abschluss mit allgemeiner Bemerkung und Angebots-Positionen
@@ -719,7 +724,7 @@ rep("""    sec(8, "abschluss", "Weitere Fotos", `
       </div>
       <div class="group-label">Im Angebot berücksichtigen</div>
       <div class="group">
-        ${multiChipField("Nur für dich – erscheint nicht im PDF", "abschluss.angebot", ANGEBOT_POSITIONEN)}
+        ${multiChipField("Positionen", "abschluss.angebot", ANGEBOT_POSITIONEN)}
       </div>
       <div class="group-label">Weitere Fotos</div>
       ${S.zusatzbilder.length ? `<div class="group">${S.zusatzbilder.map((f,i)=> photoSlot(`zusatzbilder.${i}`, `Bild ${i+1}`, false)).join("")}</div>` : ""}
@@ -738,10 +743,11 @@ rep('const KOMP_LABELS = { hybrid:"Wechselrichter", batterie:"Batteriespeicher",
     'const KOMP_LABELS = { hybrid:"Wechselrichter + Speicher", batterie:"Batteriespeicher", notstrom:"Notstrom" };')
 rep("""    {label:"Montageort Wechselrichter", url:d.elektro.fotoWechselrichter},""", """    {label:"Montageort Wechselrichter + Speicher", url:d.elektro.fotoWechselrichter},""")
 rep("""  /* Weitere Fotos */
-  const extra =""", """  /* Allgemeine Bemerkung (Angebots-Positionen sind nur intern und kommen nicht ins PDF) */
-  if(d.abschluss && d.abschluss.bemerkung){
-    sectionHeader("BEMERKUNG", PDF_BLUE_DEEP);
-    kvGroup([["Bemerkung", d.abschluss.bemerkung]]);
+  const extra =""", """  /* Abschluss: allgemeine Bemerkung und Positionen fürs Angebot */
+  const angebot = (d.abschluss && d.abschluss.angebot || []).join(", ");
+  if(d.abschluss && (d.abschluss.bemerkung || angebot)){
+    sectionHeader("ABSCHLUSS", PDF_BLUE_DEEP);
+    kvGroup([["Im Angebot berücksichtigen", angebot], ["Bemerkung", d.abschluss.bemerkung]]);
     y += 3;
   }
 

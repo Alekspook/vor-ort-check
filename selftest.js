@@ -178,6 +178,18 @@ async function selftest(){
     }
   }
 
+  // --- Test 9: Fotoplätze haben feste Höhe, auch ungeladen (sonst springt die Seite in Safari) ---
+  try{
+    const box = document.createElement("div");
+    box.className = "photo-preview";
+    box.style.cssText = "position:absolute;left:-9999px;width:300px;";
+    box.innerHTML = '<img src="data:image/jpeg;base64,AAAA" alt="" loading="lazy" decoding="async">';
+    document.body.appendChild(box);
+    const h = box.querySelector("img").offsetHeight;
+    box.remove();
+    check("Fotoplätze behalten ihre Höhe, bevor das Foto geladen ist", h >= 200, h >= 200 ? "" : `Höhe ungeladen: ${h}px — Seite springt bei Auswahl`);
+  }catch(e){ check("Fotoplätze behalten ihre Höhe, bevor das Foto geladen ist", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

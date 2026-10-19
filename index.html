@@ -524,7 +524,9 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   .photo-btn .icon{font-size:20px;}
   .photo-btn span:last-child{font-size:12.5px;font-weight:600;}
   .photo-preview{position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
-  .photo-preview img{display:block;width:100%;max-height:220px;object-fit:cover;}
+  /* Feste Höhe: Safari kennt bei Lazy-Loading die Bildhöhe erst nach dem Laden und hat keinen
+     Scroll-Ausgleich — ohne feste Höhe springt die Seite bei jeder Auswahl. */
+  .photo-preview img{display:block;width:100%;height:220px;object-fit:cover;background:var(--paper);}
   .photo-remove{position:absolute;top:8px;right:8px;background:rgba(22,58,87,.85);color:#fff;border:none;font-size:12px;padding:5px 9px;border-radius:var(--radius-sm);cursor:pointer;}
 
   .roof-card{border-color:var(--line);border-left-color:var(--group-color,var(--ink));}

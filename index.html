@@ -2618,6 +2618,14 @@ function renderBackupScreen(){
         ${backupMessage ? `<div class="note" style="margin:0 0 12px;color:var(--ink);">${escapeHtml(backupMessage)}</div>` : ""}
         <button class="action-btn" ${busyAttr} onclick="restoreFromBackup()">Aus Backup wiederherstellen</button>
       </div>
+      <div class="card">
+        <h3>Passwort ändern<span class="hint">Neues Passwort für dein Backup-Konto. Auf anderen Geräten meldest du dich danach damit an.</span></h3>
+        <div class="field">
+          <label class="field-label" for="changePasswordInput">Neues Passwort</label>
+          <input type="password" id="changePasswordInput" autocomplete="new-password" value="${escapeAttr(newPassword)}" oninput="newPassword=this.value">
+        </div>
+        <button class="action-btn" ${busyAttr} onclick="backupSetNewPassword()">Passwort speichern</button>
+      </div>
       <button class="action-btn" onclick="backupSignOut()">Abmelden</button>`;
   }
   return `

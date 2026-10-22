@@ -2304,7 +2304,7 @@ async function normalizeImageOrientation(dataUrl){
 const SUPABASE_URL = "https://rpfhadlvtudzxscvaikz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwZmhhZGx2dHVkenhzY3ZhaWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzOTUzMDMsImV4cCI6MjEwNDk3MTMwM30.loX4texxstOXL9SexPO3x9AuXZ2TmCXcDmVdXrxl3eE";
 const supabaseClient = (window.supabase && window.supabase.createClient)
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { flowType: "implicit" } })
   : null;
 async function sha256Hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
@@ -2359,6 +2359,7 @@ let backupLastError = null;
 let backupRestoreProgress = null;
 let pendingDeletes = [];
 let backupEmail = "", backupPassword = "", backupMessage = "", backupBusy = false;
+let passwordRecovery = false, newPassword = "";
 
 function scheduleBackup(delay){
   if(!backupUser) return;
@@ -2541,6 +2542,30 @@ async function backupSignUp(){
   }catch(e){ backupMessage = authErrorText(e); }
   backupBusy = false; render();
 }
+async function backupForgotPassword(){
+  if(backupBusy) return;
+  const email = backupEmail.trim();
+  if(!email){ backupMessage = "Bitte oben zuerst deine E-Mail-Adresse eintragen."; render(); return; }
+  backupBusy = true; backupMessage = ""; render();
+  try{
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if(error) throw error;
+    backupMessage = `E-Mail an ${email} ist unterwegs. Den Link darin antippen – es öffnet sich diese App, dort ein neues Passwort festlegen.`;
+  }catch(e){ backupMessage = authErrorText(e); }
+  backupBusy = false; render();
+}
+async function backupSetNewPassword(){
+  if(backupBusy) return;
+  if(newPassword.length < 6){ backupMessage = "Das Passwort muss mindestens 6 Zeichen haben."; render(); return; }
+  backupBusy = true; backupMessage = ""; render();
+  try{
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    if(error) throw error;
+    passwordRecovery = false; newPassword = "";
+    backupMessage = "Neues Passwort gespeichert. Auf deinen anderen Geräten jetzt mit diesem Passwort anmelden.";
+  }catch(e){ backupMessage = authErrorText(e); }
+  backupBusy = false; render();
+}
 async function backupSignOut(){
   const open = recordsNotBackedUp().length;
   const doSignOut = async ()=>{ await supabaseClient.auth.signOut(); backupMessage = ""; render(); };
@@ -2552,6 +2577,17 @@ function renderBackupScreen(){
   let body;
   if(!supabaseClient){
     body = `<div class="card"><div class="note" style="margin:0;">Keine Verbindung zum Backup-Server. Bitte Internetverbindung prüfen und die App neu öffnen.</div></div>`;
+  }else if(passwordRecovery){
+    body = `
+      <div class="card">
+        <h3>Neues Passwort festlegen<span class="hint">${escapeHtml(backupUser && backupUser.email || "")}</span></h3>
+        <div class="field">
+          <label class="field-label" for="newPasswordInput">Neues Passwort</label>
+          <input type="password" id="newPasswordInput" autocomplete="new-password" value="${escapeAttr(newPassword)}" oninput="newPassword=this.value">
+        </div>
+        ${backupMessage ? `<div class="note" style="color:var(--ink);margin:0 0 12px;">${escapeHtml(backupMessage)}</div>` : ""}
+        <button class="action-btn primary" ${busyAttr} onclick="backupSetNewPassword()">${backupBusy ? "Bitte warten…" : "Passwort speichern"}</button>
+      </div>`;
   }else if(!backupUser){
     body = `
       <div class="card">
@@ -2566,6 +2602,7 @@ function renderBackupScreen(){
         </div>
         ${backupMessage ? `<div class="note" style="color:var(--ink);margin:0 0 12px;">${escapeHtml(backupMessage)}</div>` : ""}
         <button class="action-btn primary" ${busyAttr} onclick="backupSignIn()">${backupBusy ? "Bitte warten…" : "Anmelden"}</button>
+        <button class="action-btn" ${busyAttr} onclick="backupForgotPassword()">Passwort vergessen?</button>
         <button class="action-btn" ${busyAttr} onclick="backupSignUp()">Neues Konto erstellen</button>
       </div>`;
   }else{
@@ -2597,6 +2634,7 @@ if(supabaseClient){
   supabaseClient.auth.onAuthStateChange((event, session)=>{
     const wasUser = backupUser && backupUser.id;
     backupUser = session ? session.user : null;
+    if(event === "PASSWORD_RECOVERY"){ passwordRecovery = true; backupMessage = ""; screen = "backup"; render(); }
     if((backupUser && backupUser.id) !== wasUser){
       backupLastError = null;
       render();
@@ -3080,7 +3118,7 @@ async function finishRecord(){
     safeAlert("ACHTUNG: Die gespeicherten Vor-Ort-Checks konnten nicht geladen werden (" + storageError + ").\n\nBitte die App einmal komplett schließen und neu öffnen. Wenn das nicht hilft: Cloud-Backup → Aus Backup wiederherstellen.");
   }
   try{ pendingDeletes = (await idbGet(PENDING_DELETES_KEY)) || []; }catch(e){ pendingDeletes = []; }
-  screen = "home";
+  screen = passwordRecovery ? "backup" : "home";
   render();
   enforceFinishedLimit();
   scheduleBackup(2000);

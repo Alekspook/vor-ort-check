@@ -231,14 +231,18 @@ async function selftest(){
 
   // --- Test 11b: PDF-Farben passen zur Firma ---
   try{
-    const rg = c=> c.map(v=> String(+(v/255).toFixed(3))).join(" ") + " rg";
+    // Prüft, ob eine Füll-/Textfarbe (rg) im PDF vorkommt; jsPDF schreibt z. B. "0.91 0. 0. rg"
+    const hasColor = (out, c)=> (out.match(/[\d.]+ [\d.]+ [\d.]+ rg/g) || []).some(t=>{
+      const v = t.split(" ").slice(0,3).map(parseFloat);
+      return v.every((x,i)=> Math.abs(x - c[i]/255) < 0.006);
+    });
     const problems = [];
     for(const id of ["", ...FIRMEN.map(f=>f.id)]){
       const d = freshState(); if(id) setFirma(d, id); d.kunde.nachname = "Farbtest";
       const out = (await buildPDF(d)).output();
       const pal = pdfPalette(d), std = PDF_PALETTES.standard;
-      if(!out.includes(rg(pal.blueDeep))) problems.push((id || "ohne Firma") + ": Akzentfarbe fehlt");
-      if(id && out.includes(rg(std.blueDeep))) problems.push(id + ": noch Standard-Blau im PDF");
+      if(!hasColor(out, pal.blueDeep)) problems.push((id || "ohne Firma") + ": Akzentfarbe fehlt");
+      if(id && hasColor(out, std.blueDeep)) problems.push(id + ": noch Standard-Blau im PDF");
       if(id && pal === std) problems.push(id + ": keine eigenen PDF-Farben");
     }
     check("PDF-Farben passen zur Firma (Sola+, Sol-Living, ohne Firma)", !problems.length, problems.join("; "));

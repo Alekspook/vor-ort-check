@@ -209,20 +209,25 @@ async function selftest(){
       got !== want ? "Umstellung falsch: " + got : !kept ? "Alte Angaben verloren" : !added ? "Neue Felder fehlen" : "");
   }catch(e){ check("Alte Datensätze: Begriffe umgestellt, alte Angaben erhalten", false, e.message); }
 
-  // --- Test 11: Firma (Sola+) – Logo, Kontakt im PDF, alte Datensätze ohne Firma ---
+  // --- Test 11: Firmen – Logo/Schriftzug, Kontakt, Fachberater im PDF; alte Datensätze ohne Firma ---
   try{
-    const f = FIRMEN[0];
-    let d = freshState(); d.firma = f.id; d.kunde.nachname = "Firmatest";
-    const out = (await buildPDF(d)).output();
-    const hasLogo = /\/Subtype \/Image/.test(out);
-    const hasMail = !f.email || out.includes(f.email);
-    const hasPhone = out.includes(BERATER_TELEFON);
-    const footer = out.includes(f.name.replace(/[()\\]/g, m=>"\\"+m));
+    const problems = [];
+    let prev = null;
+    for(const f of FIRMEN){
+      const d = prev || freshState(); d.kunde.nachname = "Firmatest";
+      setFirma(d, f.id);   // beim zweiten Durchlauf: Firmenwechsel am selben Datensatz
+      prev = d;
+      const out = (await buildPDF(d)).output();
+      if(f.logo && !/\/Subtype \/Image/.test(out)) problems.push(f.name + ": Logo fehlt");
+      if(!f.logo && !out.includes("(" + f.name + ") Tj")) problems.push(f.name + ": Schriftzug fehlt");
+      if(f.email && !out.includes(f.email)) problems.push(f.name + ": E-Mail fehlt");
+      if(!out.includes(BERATER_TELEFON)) problems.push(f.name + ": Telefon fehlt");
+      if(f.berater && !out.includes("Besichtigt von " + f.berater)) problems.push(f.name + ": Fachberater falsch (" + d.grunddaten.besichtigtVon + ")");
+    }
     const old = freshState(); delete old.firma; normalizeRecordData(old);
-    check("Firma: Logo, E-Mail, Telefon im PDF; alte Datensätze ohne Firma",
-      hasLogo && hasMail && hasPhone && footer && old.firma === "" && firmaOf(old) === null,
-      hasLogo && hasMail && hasPhone && footer && old.firma === "" ? "" : !hasLogo ? "Logo fehlt" : !hasMail ? "E-Mail fehlt" : !hasPhone ? "Telefon fehlt" : !footer ? "Firmenname fehlt" : "Altdaten falsch");
-  }catch(e){ check("Firma: Logo, E-Mail, Telefon im PDF; alte Datensätze ohne Firma", false, e.message); }
+    if(!(old.firma === "" && firmaOf(old) === null)) problems.push("Altdaten falsch");
+    check("Firmen: Logo/Schriftzug, Kontakt, Fachberater im PDF; Firmenwechsel; Altdaten", !problems.length, problems.join("; "));
+  }catch(e){ check("Firmen: Logo/Schriftzug, Kontakt, Fachberater im PDF; Firmenwechsel; Altdaten", false, e.message); }
 
   // --- Test 12: Cloud-Fotos werden verkleinert, kleine bleiben unverändert ---
   try{

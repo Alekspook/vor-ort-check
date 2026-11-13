@@ -643,6 +643,16 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   .dialog-actions .ok{color:#fff;}
   .dialog-actions .cancel{background:var(--surface-2);color:var(--ink);}
   .toast{position:fixed;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:250;max-width:600px;margin:0 auto;background:rgba(14,27,26,.92);color:#fff;padding:12px 16px;border-radius:14px;font-size:14px;line-height:1.4;box-shadow:0 10px 30px rgba(0,0,0,.2);animation:rise .2s ease;}
+  .check-flash{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity .25s ease;}
+  .check-flash.out{opacity:0;}
+  .check-flash-box{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px 28px 18px;border-radius:24px;background:rgba(14,27,26,.9);color:#fff;box-shadow:0 16px 40px rgba(0,0,0,.25);animation:popin .2s ease-out;text-align:center;}
+  .check-flash-circle{width:68px;height:68px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;}
+  .check-flash-circle svg{stroke-width:3;}
+  .check-flash-title{font-size:16px;font-weight:650;}
+  .check-flash-sub{font-size:13px;opacity:.75;margin-top:-6px;}
+  .just-filled{animation:justfilled 1.8s ease-out;}
+  @keyframes popin{from{transform:scale(.85);opacity:0}}
+  @keyframes justfilled{0%,45%{background:rgba(30,154,105,.16)}100%{background:transparent}}
   @keyframes fadein{from{opacity:0}}
   @keyframes rise{from{transform:translateY(12px);opacity:0}}
   @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important;}}
@@ -1543,6 +1553,19 @@ function parseKundendaten(text){
   if(raw.ort) out["standort.ort"] = raw.ort.trim();
   return out;
 }
+// Großer grüner Haken in der Bildschirmmitte, ca. 1 Sekunde sichtbar.
+function showSuccessCheck(title, sub){
+  const old = document.getElementById("checkFlash");
+  if(old) old.remove();
+  const el = document.createElement("div");
+  el.id = "checkFlash";
+  el.className = "check-flash";
+  el.setAttribute("role", "status");
+  el.innerHTML = `<div class="check-flash-box"><div class="check-flash-circle">${icon("check", 38)}</div><div class="check-flash-title">${escapeHtml(title)}</div>${sub ? `<div class="check-flash-sub">${escapeHtml(sub)}</div>` : ""}</div>`;
+  document.body.appendChild(el);
+  setTimeout(()=> el.classList.add("out"), 1100);
+  setTimeout(()=> el.remove(), 1400);
+}
 function applyKundendaten(text){
   const found = parseKundendaten(text);
   const paths = Object.keys(found);
@@ -1553,7 +1576,8 @@ function applyKundendaten(text){
   paths.forEach(p=> setPath(S, p, found[p]));
   scheduleAutosave();
   render();
-  showToast("Kundendaten übernommen");
+  paths.forEach(p=>{ const row = document.getElementById(domId(p)); if(row) row.classList.add("just-filled"); });
+  showSuccessCheck("Kundendaten übernommen", paths.length === 1 ? "1 Feld ausgefüllt" : paths.length + " Felder ausgefüllt");
   return true;
 }
 function onKundendatenPaste(ev, el){

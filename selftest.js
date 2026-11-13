@@ -277,20 +277,20 @@ async function selftest(){
     if("kunde.anrede" in parseKundendaten("Anrede: Dr.")) problems.push("Anrede Dr. übernommen");
     if(Object.keys(parseKundendaten("Hallo, bitte zurückrufen")).length) problems.push("Freitext erkannt");
     // Übernahme in einen offenen Check: vorhandene Werte bleiben, wenn der Text dafür nichts hat
-    const savedS = S, savedScreen = screen, savedToast = window.showToast, savedRender = window.render, savedAuto = window.scheduleAutosave;
-    let toast = "";
+    const savedS = S, savedScreen = screen, savedToast = window.showToast, savedCheck = window.showSuccessCheck, savedRender = window.render, savedAuto = window.scheduleAutosave;
+    let toast = "", checkShown = "";
     try{
       S = freshState(); S.kunde.telefon = "0170 111"; S.standort.ort = "Altort";
-      window.showToast = m=>{ toast = m; }; window.render = ()=>{}; window.scheduleAutosave = ()=>{};
+      window.showToast = m=>{ toast = m; }; window.showSuccessCheck = (t, sub)=>{ checkShown = t + " / " + sub; }; window.render = ()=>{}; window.scheduleAutosave = ()=>{};
       applyKundendaten("Vorname: Katrin\nNachname: Weyer\nOrt: Teltow");
       if(S.kunde.vorname !== "Katrin" || S.standort.ort !== "Teltow" || S.kunde.telefon !== "0170 111") problems.push("Übernahme falsch");
-      if(toast !== "Kundendaten übernommen") problems.push("Meldung: " + toast);
+      if(checkShown !== "Kundendaten übernommen / 3 Felder ausgefüllt") problems.push("Haken: " + checkShown);
       const before = JSON.stringify(S);
       applyKundendaten("irgendwas ohne Doppelpunkt");
       if(JSON.stringify(S) !== before) problems.push("Ohne Treffer verändert");
       if(!/Keine Kundendaten erkannt/.test(toast)) problems.push("Kein Hinweis bei Fehltreffer");
     }finally{
-      S = savedS; screen = savedScreen; window.showToast = savedToast; window.render = savedRender; window.scheduleAutosave = savedAuto;
+      S = savedS; screen = savedScreen; window.showToast = savedToast; window.showSuccessCheck = savedCheck; window.render = savedRender; window.scheduleAutosave = savedAuto;
     }
     check("Kundendaten einfügen: Lead-Text wird richtig verteilt", !problems.length, problems.join("; "));
   }catch(e){ check("Kundendaten einfügen: Lead-Text wird richtig verteilt", false, e.message); }

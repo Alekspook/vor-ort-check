@@ -224,6 +224,41 @@ async function selftest(){
       hasLogo && hasMail && hasPhone && footer && old.firma === "" ? "" : !hasLogo ? "Logo fehlt" : !hasMail ? "E-Mail fehlt" : !hasPhone ? "Telefon fehlt" : !footer ? "Firmenname fehlt" : "Altdaten falsch");
   }catch(e){ check("Firma: Logo, E-Mail, Telefon im PDF; alte Datensätze ohne Firma", false, e.message); }
 
+  // --- Test 12: Cloud-Fotos werden verkleinert, kleine bleiben unverändert ---
+  try{
+    const big = document.createElement("canvas"); big.width = 4032; big.height = 3024;
+    const bx = big.getContext("2d");
+    for(let i=0;i<4000;i++){ bx.fillStyle = "hsl(" + (i*37%360) + ",70%," + (30+i%40) + "%)"; bx.fillRect((i*97)%4032, (i*61)%3024, 60, 45); }
+    const bigUrl = big.toDataURL("image/jpeg", 0.95); big.width = big.height = 0;
+    const bigBytes = (await (await fetch(bigUrl)).blob()).size;
+    const shrunk = await shrinkForCloud(bigUrl);
+    const shrunkImg = await loadImageEl(URL.createObjectURL(shrunk.blob));
+    const dimOk = Math.max(shrunkImg.naturalWidth, shrunkImg.naturalHeight) === CLOUD_MAX_DIM && shrunk.mime === "image/jpeg";
+    const smaller = shrunk.blob.size < bigBytes / 2;
+    const small = document.createElement("canvas"); small.width = 40; small.height = 30;
+    small.getContext("2d").fillRect(0,0,40,30);
+    const smallUrl = small.toDataURL("image/jpeg", 0.9);
+    const keptSmall = await shrinkForCloud(smallUrl);
+    const smallSame = (await blobToDataUrl(keptSmall.blob)) === smallUrl;
+    check("Cloud-Fotos: groß wird auf 2000 px verkleinert, klein bleibt gleich", dimOk && smaller && smallSame,
+      !dimOk ? "Maße falsch: " + shrunkImg.naturalWidth + "x" + shrunkImg.naturalHeight : !smaller ? ("Nicht kleiner: " + bigBytes + " → " + shrunk.blob.size) : !smallSame ? "Kleines Foto verändert" : "");
+  }catch(e){ check("Cloud-Fotos: groß wird auf 2000 px verkleinert, klein bleibt gleich", false, e.message); }
+
+  // --- Test 13: Wiederhergestelltes (verkleinertes) Foto behält den Cloud-Namen ---
+  try{
+    const fakeKey = "ab".repeat(32) + ".jpg";
+    const realFetch = window.fetch;
+    const tiny = document.createElement("canvas"); tiny.width = 8; tiny.height = 8;
+    const tinyBlob = await new Promise(res=> tiny.toBlob(res, "image/jpeg", 0.5));
+    window.fetch = async (u, o)=> String(u).includes(fakeKey) ? new Response(tinyBlob, { status: 200 }) : realFetch(u, o);
+    let restored;
+    try{ restored = await unpackPhotos({ $photo: SUPABASE_URL + "/storage/v1/object/public/photos/" + fakeKey }); }
+    finally{ window.fetch = realFetch; }
+    const key = await photoKeyFor(restored);
+    photoKeys.delete(restored); photoUrlPromises.delete(restored);
+    check("Wiederherstellen: verkleinertes Foto wird nicht doppelt hochgeladen", key === fakeKey, key !== fakeKey ? "Schlüssel " + key : "");
+  }catch(e){ check("Wiederherstellen: verkleinertes Foto wird nicht doppelt hochgeladen", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

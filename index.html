@@ -2330,8 +2330,8 @@ async function normalizeImageOrientation(dataUrl){
     const img = await loadImageEl(dataUrl);
     let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
     /* Nur die PDF-Vorschau verkleinern (spart massiv Dateigröße bei
-       E-Mail-Versand) — der Original-Upload für den anklickbaren Link
-       bleibt in voller Auflösung erhalten, siehe uploadPhotoForLink. */
+       E-Mail-Versand). Der Upload für den anklickbaren Link wird separat
+       verkleinert, siehe shrinkForCloud. Auf dem Gerät bleibt das Original. */
     const maxDim = 1600;
     if(Math.max(w,h) > maxDim){
       const scale = maxDim / Math.max(w,h);
@@ -2351,8 +2351,7 @@ async function normalizeImageOrientation(dataUrl){
    Ein Klick auf ein Foto im PDF soll wie gewohnt einen echten Web-Link öffnen
    (so wie es die meisten PDF-Betrachter erwarten und zuverlässig unterstützen)
    statt einer eingebetteten Daten-URI. Dafür lädt jedes Foto beim Erstellen
-   des PDFs sein Original (mit allen Metadaten, z.B. GPS bei Drohnenfotos) zu
-   Supabase Storage hoch. Ohne Internetverbindung schlägt der Upload fehl —
+   des PDFs eine verkleinerte Fassung (shrinkForCloud) zu Supabase Storage hoch. Ohne Internetverbindung schlägt der Upload fehl —
    das Foto bleibt dann im PDF sichtbar, nur eben nicht anklickbar. */
 const SUPABASE_URL = "https://rpfhadlvtudzxscvaikz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwZmhhZGx2dHVkenhzY3ZhaWt6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzOTUzMDMsImV4cCI6MjEwNDk3MTMwM30.loX4texxstOXL9SexPO3x9AuXZ2TmCXcDmVdXrxl3eE";
@@ -2363,19 +2362,47 @@ async function sha256Hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
 }
+/* Für die Cloud (Foto-Link im PDF + Backup) reicht eine kleinere Fassung:
+   max. 2000 px, ca. 0,3–0,6 MB statt 2–4 MB in voller Handy-Auflösung.
+   Der Dateiname bleibt der Schlüssel des Originals, damit Verweise auf dem
+   Gerät und alte Links weiter passen. Kleine Bilder bleiben unverändert. */
+const CLOUD_MAX_DIM = 2000, CLOUD_QUALITY = 0.82, CLOUD_KEEP_BELOW_BYTES = 700 * 1024;
+async function shrinkForCloud(dataUrl){
+  const mime = (dataUrl.match(/^data:([^;]+);/)||[])[1] || "image/jpeg";
+  const original = await (await fetch(dataUrl)).blob();
+  try{
+    const img = await loadImageEl(dataUrl);
+    const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
+    if(!w0 || !h0) return { blob: original, mime };
+    if(Math.max(w0, h0) <= CLOUD_MAX_DIM && original.size <= CLOUD_KEEP_BELOW_BYTES) return { blob: original, mime };
+    const scale = Math.min(1, CLOUD_MAX_DIM / Math.max(w0, h0));
+    const w = Math.round(w0 * scale), h = Math.round(h0 * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const small = await new Promise(res=> canvas.toBlob(res, "image/jpeg", CLOUD_QUALITY));
+    canvas.width = canvas.height = 0;
+    if(!small || small.size >= original.size) return { blob: original, mime };
+    return { blob: small, mime: "image/jpeg" };
+  }catch(e){
+    console.warn("Foto konnte nicht verkleinert werden, lade Original hoch", e);
+    return { blob: original, mime };
+  }
+}
 async function uploadPhotoForLink(dataUrl){
   if(!supabaseClient) return null;
   try{
-    const mime = (dataUrl.match(/^data:([^;]+);/)||[])[1] || "image/jpeg";
     const path = await photoKeyFor(dataUrl);
     const publicUrl = supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
     try{
       const head = await fetch(publicUrl + "?check=" + Date.now(), { method: "HEAD", cache: "no-store" });
       if(head.ok) return publicUrl;
     }catch(e){}
-    const blob = await (await fetch(dataUrl)).blob();
+    const { blob, mime: uploadMime } = await shrinkForCloud(dataUrl);
     // Kein upsert: das bräuchte eine Lese-Regel, die das öffentliche Auflisten aller Fotos erlauben würde.
-    const uploadPromise = supabaseClient.storage.from("photos").upload(path, blob, { contentType: mime, upsert: false })
+    const uploadPromise = supabaseClient.storage.from("photos").upload(path, blob, { contentType: uploadMime, upsert: false })
       .then(({error})=>{
         if(error && String(error.statusCode) !== "409" && !/already exists|duplicate/i.test(error.message || "")) throw error;
         return supabaseClient.storage.from("photos").getPublicUrl(path).data.publicUrl;
@@ -2470,6 +2497,11 @@ async function unpackPhotos(obj){
     if(!res.ok) throw new Error("Foto nicht gefunden: " + obj.$photo);
     const dataUrl = await blobToDataUrl(await res.blob());
     photoUrlPromises.set(dataUrl, Promise.resolve(obj.$photo));
+    // Die Cloud-Fassung ist verkleinert, ihr Inhalt passt also nicht mehr zum
+    // Dateinamen. Den Namen aus dem Link übernehmen, damit das Foto beim
+    // nächsten Backup nicht ein zweites Mal hochgeladen wird.
+    const cloudKey = (obj.$photo.match(/\/photos\/([0-9a-f]{64}\.(?:jpg|png))(?:$|\?)/) || [])[1];
+    if(cloudKey) photoKeys.set(dataUrl, cloudKey);
     return dataUrl;
   }
   if(Array.isArray(obj)){ const out = []; for(const v of obj) out.push(await unpackPhotos(v)); return out; }
@@ -2502,6 +2534,7 @@ async function runBackup(){
     if(changed) await saveRecords();
     backupLastOk = Date.now();
     backupLastError = null;
+    if(!recordsNotBackedUp().length && !pendingDeletes.length) maybeCleanupCloud();
   }catch(e){
     console.warn("Backup fehlgeschlagen", e);
     backupLastError = (e && e.message) || String(e);
@@ -2509,6 +2542,30 @@ async function runBackup(){
     backupRunning = false;
     updateBackupIndicator();
     if(recordsNotBackedUp().length || pendingDeletes.length) scheduleBackup(backupLastError ? 60000 : 3000);
+  }
+}
+/* Cloud-Speicher aufräumen (Server-Funktion "cleanup-photos"): löscht Fotos,
+   die in keinem Backup mehr vorkommen und älter als 14 Tage sind, z. B. von
+   Kunden, die durch das 15er-Limit aus der App gefallen sind. Höchstens
+   einmal am Tag, nur wenn dieses Gerät komplett gesichert ist. */
+const CLEANUP_KEY = "vorortcheck_last_cloud_cleanup";
+let cleanupRunning = false;
+async function maybeCleanupCloud(){
+  if(cleanupRunning || !backupUser || !supabaseClient || !supabaseClient.functions) return;
+  let last = 0;
+  try{ last = Number(localStorage.getItem(CLEANUP_KEY)) || 0; }catch(e){}
+  if(Date.now() - last < 24*60*60*1000) return;
+  cleanupRunning = true;
+  try{
+    const { data, error } = await supabaseClient.functions.invoke("cleanup-photos", { method: "POST" });
+    if(error) throw error;
+    console.info("Cloud aufgeräumt", data);
+    try{ localStorage.setItem(CLEANUP_KEY, String(Date.now())); }catch(e){}
+  }catch(e){
+    console.warn("Cloud-Aufräumen fehlgeschlagen (nicht schlimm, nächster Versuch in einer Stunde)", e);
+    try{ localStorage.setItem(CLEANUP_KEY, String(Date.now() - 23*60*60*1000)); }catch(e2){}
+  }finally{
+    cleanupRunning = false;
   }
 }
 async function restoreFromBackup(){

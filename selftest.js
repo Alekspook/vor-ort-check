@@ -229,6 +229,21 @@ async function selftest(){
     check("Firmen: Logo/Schriftzug, Kontakt, Fachberater im PDF; Firmenwechsel; Altdaten", !problems.length, problems.join("; "));
   }catch(e){ check("Firmen: Logo/Schriftzug, Kontakt, Fachberater im PDF; Firmenwechsel; Altdaten", false, e.message); }
 
+  // --- Test 11b: PDF-Farben passen zur Firma ---
+  try{
+    const rg = c=> c.map(v=> String(+(v/255).toFixed(3))).join(" ") + " rg";
+    const problems = [];
+    for(const id of ["", ...FIRMEN.map(f=>f.id)]){
+      const d = freshState(); if(id) setFirma(d, id); d.kunde.nachname = "Farbtest";
+      const out = (await buildPDF(d)).output();
+      const pal = pdfPalette(d), std = PDF_PALETTES.standard;
+      if(!out.includes(rg(pal.blueDeep))) problems.push((id || "ohne Firma") + ": Akzentfarbe fehlt");
+      if(id && out.includes(rg(std.blueDeep))) problems.push(id + ": noch Standard-Blau im PDF");
+      if(id && pal === std) problems.push(id + ": keine eigenen PDF-Farben");
+    }
+    check("PDF-Farben passen zur Firma (Sola+, Sol-Living, ohne Firma)", !problems.length, problems.join("; "));
+  }catch(e){ check("PDF-Farben passen zur Firma (Sola+, Sol-Living, ohne Firma)", false, e.message); }
+
   // --- Test 12: Cloud-Fotos werden verkleinert, kleine bleiben unverändert ---
   try{
     const big = document.createElement("canvas"); big.width = 4032; big.height = 3024;

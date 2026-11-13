@@ -264,6 +264,37 @@ async function selftest(){
     check("Wiederherstellen: verkleinertes Foto wird nicht doppelt hochgeladen", key === fakeKey, key !== fakeKey ? "Schlüssel " + key : "");
   }catch(e){ check("Wiederherstellen: verkleinertes Foto wird nicht doppelt hochgeladen", false, e.message); }
 
+  // --- Test 14: Kundendaten einfügen (Lead-Liste) ---
+  try{
+    const problems = [];
+    const lead = "Vor-Ort-Check\nAnrede: Frau\nVorname: Katrin\nNachname: Weyer\nTelefon: 01514 4562555\nE-Mail: katrin.griehl@t-online.de\nStraße: Siegfriedstraße\nHausnummer: 22\nPLZ: 14513\nOrt: Teltow";
+    const want = { "kunde.anrede":"Frau", "kunde.vorname":"Katrin", "kunde.nachname":"Weyer", "kunde.telefon":"01514 4562555", "kunde.email":"katrin.griehl@t-online.de",
+      "standort.strasse":"Siegfriedstraße", "standort.nr":"22", "standort.plz":"14513", "standort.ort":"Teltow" };
+    const got = parseKundendaten(lead);
+    Object.keys(want).forEach(k=>{ if(got[k] !== want[k]) problems.push(k + "=" + got[k]); });
+    const adr = parseKundendaten("Vorname: Max\r\nAdresse: Am Hollager Berg 1a, 49134 Wallenhorst\nTelefon:");
+    if(adr["standort.strasse"] !== "Am Hollager Berg" || adr["standort.nr"] !== "1a" || adr["standort.plz"] !== "49134" || adr["standort.ort"] !== "Wallenhorst" || "kunde.telefon" in adr) problems.push("Adresse: " + JSON.stringify(adr));
+    if("kunde.anrede" in parseKundendaten("Anrede: Dr.")) problems.push("Anrede Dr. übernommen");
+    if(Object.keys(parseKundendaten("Hallo, bitte zurückrufen")).length) problems.push("Freitext erkannt");
+    // Übernahme in einen offenen Check: vorhandene Werte bleiben, wenn der Text dafür nichts hat
+    const savedS = S, savedScreen = screen, savedToast = window.showToast, savedRender = window.render, savedAuto = window.scheduleAutosave;
+    let toast = "";
+    try{
+      S = freshState(); S.kunde.telefon = "0170 111"; S.standort.ort = "Altort";
+      window.showToast = m=>{ toast = m; }; window.render = ()=>{}; window.scheduleAutosave = ()=>{};
+      applyKundendaten("Vorname: Katrin\nNachname: Weyer\nOrt: Teltow");
+      if(S.kunde.vorname !== "Katrin" || S.standort.ort !== "Teltow" || S.kunde.telefon !== "0170 111") problems.push("Übernahme falsch");
+      if(toast !== "Kundendaten übernommen") problems.push("Meldung: " + toast);
+      const before = JSON.stringify(S);
+      applyKundendaten("irgendwas ohne Doppelpunkt");
+      if(JSON.stringify(S) !== before) problems.push("Ohne Treffer verändert");
+      if(!/Keine Kundendaten erkannt/.test(toast)) problems.push("Kein Hinweis bei Fehltreffer");
+    }finally{
+      S = savedS; screen = savedScreen; window.showToast = savedToast; window.render = savedRender; window.scheduleAutosave = savedAuto;
+    }
+    check("Kundendaten einfügen: Lead-Text wird richtig verteilt", !problems.length, problems.join("; "));
+  }catch(e){ check("Kundendaten einfügen: Lead-Text wird richtig verteilt", false, e.message); }
+
   console.log("=== Vor-Ort-Check Selbsttest ===");
   results.forEach(r=>console.log((r.ok?"OK  ":"FEHLER "), r.name, r.detail?("— "+r.detail):""));
   const allOk = results.every(r=>r.ok);

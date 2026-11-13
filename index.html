@@ -1488,6 +1488,96 @@ function renderList(status){
 
 /* ---------- Field builders ---------- */
 function reqMark(required){ return required ? ' <span class="req" aria-hidden="true">*</span>' : ""; }
+/* ---------- Kundendaten einfügen ----------
+   Text aus der Lead-Liste ("Vorname: Katrin" usw.) ins Feld einfügen: die
+   erkannten Werte landen sofort in den Feldern. Leere oder fehlende Zeilen
+   ändern nichts. Eine Zeile "Adresse: Straße Nr, PLZ Ort" wird aufgeteilt. */
+const KUNDENDATEN_LABELS = {
+  anrede: "anrede", vorname: "vorname", nachname: "nachname",
+  telefon: "telefon", tel: "telefon", telefonnummer: "telefon", mobil: "telefon", handy: "telefon",
+  email: "email", mail: "email", emailadresse: "email",
+  strasse: "strasse", hausnummer: "nr", hausnr: "nr", nr: "nr",
+  plz: "plz", postleitzahl: "plz", ort: "ort", stadt: "ort", wohnort: "ort",
+  adresse: "adresse", anschrift: "adresse"
+};
+function splitStrasseNr(str){
+  const m = String(str).trim().match(/^(.*\S)\s+(\d+\s*[a-zA-Z]?(?:\s*[-\/]\s*\d+\s*[a-zA-Z]?)?)$/);
+  return m ? { strasse: m[1].replace(/,$/, "").trim(), nr: m[2].replace(/\s+/g, "") } : { strasse: String(str).trim(), nr: "" };
+}
+function parseKundendaten(text){
+  const raw = {};
+  String(text || "").split(/\r?\n/).forEach(line=>{
+    const m = line.match(/^\s*([^:：]{1,40}?)\s*[:：]\s*(.*?)\s*$/);
+    if(!m || !m[2]) return;
+    const key = m[1].toLowerCase().replace(/ß/g, "ss").replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/[^a-z]/g, "");
+    const field = KUNDENDATEN_LABELS[key];
+    if(field && !(field in raw)) raw[field] = m[2];
+  });
+  const out = {};
+  if(raw.anrede){
+    const a = raw.anrede.trim().toLowerCase();
+    const anrede = a === "familie" ? "Familie" : (a === "herr" || a === "herrn") ? "Herr" : a === "frau" ? "Frau" : "";
+    if(anrede) out["kunde.anrede"] = anrede;
+  }
+  if(raw.vorname) out["kunde.vorname"] = raw.vorname;
+  if(raw.nachname) out["kunde.nachname"] = raw.nachname;
+  if(raw.telefon) out["kunde.telefon"] = raw.telefon;
+  if(raw.email) out["kunde.email"] = raw.email.replace(/^mailto:/i, "").trim();
+  if(raw.adresse){
+    const parts = raw.adresse.split(",");
+    const left = parts.shift().trim(), right = parts.join(",").trim();
+    const sn = splitStrasseNr(left);
+    if(sn.strasse) out["standort.strasse"] = sn.strasse;
+    if(sn.nr) out["standort.nr"] = sn.nr;
+    const po = right.match(/^(\d{4,5})\s+(.+)$/);
+    if(po){ out["standort.plz"] = po[1]; out["standort.ort"] = po[2].trim(); }
+    else if(right) out["standort.ort"] = right;
+  }
+  if(raw.strasse){
+    const sn = raw.nr ? { strasse: raw.strasse.trim(), nr: "" } : splitStrasseNr(raw.strasse);
+    out["standort.strasse"] = sn.strasse;
+    if(sn.nr) out["standort.nr"] = sn.nr;
+  }
+  if(raw.nr) out["standort.nr"] = raw.nr.trim();
+  if(raw.plz) out["standort.plz"] = raw.plz.trim();
+  if(raw.ort) out["standort.ort"] = raw.ort.trim();
+  return out;
+}
+function applyKundendaten(text){
+  const found = parseKundendaten(text);
+  const paths = Object.keys(found);
+  if(!paths.length){
+    showToast("Keine Kundendaten erkannt. Erwartet werden Zeilen wie „Vorname: Max“.");
+    return false;
+  }
+  paths.forEach(p=> setPath(S, p, found[p]));
+  scheduleAutosave();
+  render();
+  showToast("Kundendaten übernommen");
+  return true;
+}
+function onKundendatenPaste(ev, el){
+  const text = ev.clipboardData && ev.clipboardData.getData("text/plain");
+  if(!text) return;   // kein Text in der Zwischenablage greifbar: oninput übernimmt
+  ev.preventDefault();
+  el.value = "";
+  applyKundendaten(text);
+}
+function onKundendatenInput(ev, el){
+  if(ev.inputType && !/^insertFrom|^insertReplacementText$/.test(ev.inputType)) return; // Tippen: nichts tun
+  const text = el.value;
+  if(!text.trim()) return;
+  el.value = "";
+  applyKundendaten(text);
+}
+function pasteKundendatenField(){
+  return `
+    <label class="row row-input" id="fld-kundendaten-einfuegen">
+      <span class="row-label">Kundendaten einfügen</span>
+      <textarea rows="2" placeholder="Lange ins Feld drücken und Einfügen wählen" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        onpaste="onKundendatenPaste(event, this)" oninput="onKundendatenInput(event, this)"></textarea>
+    </label>`;
+}
 function textField(label, path, opts={}){
   const val = getPath(S, path) ?? "";
   const type = opts.type || "text";
@@ -1694,6 +1784,7 @@ function renderAllSections(){
       </div>
       <div class="group-label">Interessent/in</div>
       <div class="group">
+        ${pasteKundendatenField()}
         ${radioField("Anrede", "kunde.anrede", ["Familie","Herr","Frau"])}
         ${textField("Vorname", "kunde.vorname", {placeholder:"Max"})}
         ${textField("Nachname", "kunde.nachname", {placeholder:"Mustermann", required:true})}
